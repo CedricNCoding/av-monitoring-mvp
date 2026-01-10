@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: avmvp-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: avmvp
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    container_name: avmvp-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/avmvp
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  agent:
+    build: ./agent
+    container_name: avmvp-agent
+    environment:
+      API_URL: http://backend:8000/ingest
+      SITE_NAME: site-demo
+      SITE_TOKEN: change-me
+      DEVICES_JSON: >
+        [{"ip":"8.8.8.8","type":"test","driver":"ping"},
+         {"ip":"1.1.1.1","type":"test","driver":"ping"}]
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
