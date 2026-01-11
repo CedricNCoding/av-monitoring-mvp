@@ -15,42 +15,23 @@ from fastapi import (
     Request,
     Form,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from .db import SessionLocal, engine
 from .models import Base, Site, Device, DeviceEvent
 
-# ---------------------------------------------------------------------
-# INIT
-# ---------------------------------------------------------------------
 
-Base.metadata.create_all(bind=engine)
+# ---------------------------------------------------------------------
+# APP / TEMPLATES
+# ---------------------------------------------------------------------
 
 app = FastAPI(title="AV Monitoring MVP Backend")
 templates = Jinja2Templates(directory="app/templates")
 
-# ---------------------------------------------------------------------
-# Retention / Purge config
-# ---------------------------------------------------------------------
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        v = int(str(os.getenv(name, "")).strip())
-        return v
-    except Exception:
-        return default
-
-EVENT_RETENTION_DAYS = _env_int("EVENT_RETENTION_DAYS", 90)      # ex: 90 jours
-PURGE_INTERVAL_HOURS = _env_int("PURGE_INTERVAL_HOURS", 24)      # ex: toutes les 24h
-
-# garde-fous
-EVENT_RETENTION_DAYS = max(1, EVENT_RETENTION_DAYS)
-PURGE_INTERVAL_HOURS = max(1, PURGE_INTERVAL_HOURS)
-
-_purge_stop = {"stop": False}
-_purge_thread: Optional[threading.Thread] = None
 
 # ---------------------------------------------------------------------
 # DB dependency
@@ -64,14 +45,18 @@ def get_db():
         db.close()
 
 
-def _now_utc():
+def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
 
 # ---------------------------------------------------------------------
 # Helpers UI
 # ---------------------------------------------------------------------
 
 def _uptime_centis_to_human(value: Any) -> str:
+    """
+    sysUpTime SNMP (OID 1.3.6.1.2.1.1.3.0) est en centièmes de seconde.
+    """
     if value is None:
         return ""
     try:
@@ -106,7 +91,10 @@ def _sys_descr_short(s: Any, max_len: int = 90) -> str:
 
 
 def _should_log_event(prev: Dict[str, Any], new: Dict[str, Any]) -> bool:
-    if prev.get("status") != new.get("status"):
+    """
+    On log un DeviceEvent si changement intéressant.
+    """
+    if (prev.get("status") or "") != (new.get("status") or ""):
         return True
     if (prev.get("detail") or "") != (new.get("detail") or ""):
         return True
@@ -120,27 +108,41 @@ def _should_log_event(prev: Dict[str, Any], new: Dict[str, Any]) -> bool:
     if not isinstance(new_m, dict):
         new_m = {}
 
-    for k in ("snmp_ok", "sys_uptime"):
+    # champs utiles
+    for k in ("snmp_ok", "sys_uptime", "sys_descr"):
         if (prev_m.get(k) or "") != (new_m.get(k) or ""):
             return True
 
     return False
 
+
 # ---------------------------------------------------------------------
-# Purge worker
+# Retention / Purge config
 # ---------------------------------------------------------------------
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.getenv(name, "")).strip())
+    except Exception:
+        return default
+
+
+EVENT_RETENTION_DAYS = max(1, _env_int("EVENT_RETENTION_DAYS", 90))
+PURGE_INTERVAL_HOURS = max(1, _env_int("PURGE_INTERVAL_HOURS", 24))
+
+_purge_stop = {"stop": False}
+_purge_thread: Optional[threading.Thread] = None
+
 
 def purge_old_events_once(retention_days: int) -> int:
-    """
-    Supprime les events plus vieux que retention_days.
-    Retourne le nombre de lignes supprimées.
-    """
     cutoff = _now_utc() - timedelta(days=retention_days)
-
     db = SessionLocal()
     try:
-        q = db.query(DeviceEvent).filter(DeviceEvent.created_at < cutoff)
-        deleted = q.delete(synchronize_session=False)
+        deleted = (
+            db.query(DeviceEvent)
+            .filter(DeviceEvent.created_at < cutoff)
+            .delete(synchronize_session=False)
+        )
         db.commit()
         return int(deleted or 0)
     except Exception as e:
@@ -156,15 +158,12 @@ def _purge_loop():
         f"[purge] started (retention_days={EVENT_RETENTION_DAYS}, interval_hours={PURGE_INTERVAL_HOURS})",
         flush=True,
     )
-
-    # purge au démarrage (1 fois)
     deleted = purge_old_events_once(EVENT_RETENTION_DAYS)
     print(f"[purge] initial purge deleted={deleted}", flush=True)
 
-    # boucle périodique
     sleep_s = PURGE_INTERVAL_HOURS * 3600
     while not _purge_stop.get("stop", False):
-        # sommeil "interruptible"
+        # sommeil interruptible
         for _ in range(sleep_s):
             if _purge_stop.get("stop", False):
                 break
@@ -179,8 +178,41 @@ def _purge_loop():
     print("[purge] stopped", flush=True)
 
 
+# ---------------------------------------------------------------------
+# DB init with retry (IMPORTANT)
+# ---------------------------------------------------------------------
+
+def _wait_for_db_and_init(max_wait_s: int = 90) -> None:
+    """
+    Attend que Postgres soit prêt, puis crée les tables.
+    Evite que l'app crashe si la DB met quelques secondes à répondre.
+    """
+    deadline = time.time() + max_wait_s
+    last_err: Optional[Exception] = None
+
+    while time.time() < deadline:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            Base.metadata.create_all(bind=engine)
+            print("[startup] DB ready, schema ensured", flush=True)
+            return
+        except OperationalError as e:
+            last_err = e
+            print("[startup] DB not ready yet, retrying...", flush=True)
+            time.sleep(2)
+        except Exception as e:
+            last_err = e
+            print(f"[startup] DB init error, retrying: {e}", flush=True)
+            time.sleep(2)
+
+    raise RuntimeError(f"DB not ready after {max_wait_s}s: {last_err}")
+
+
 @app.on_event("startup")
 def _startup():
+    _wait_for_db_and_init(max_wait_s=90)
+
     global _purge_thread
     if _purge_thread is None or not _purge_thread.is_alive():
         _purge_stop["stop"] = False
@@ -192,13 +224,16 @@ def _startup():
 def _shutdown():
     _purge_stop["stop"] = True
 
+
 # ---------------------------------------------------------------------
-# ADMIN / SITES API
+# ADMIN API (JSON)
 # ---------------------------------------------------------------------
 
 @app.post("/admin/create-site")
 def create_site(name: str, token: Optional[str] = None, db: Session = Depends(get_db)):
     name = (name or "").strip()
+    token = (token or "").strip() if token else None
+
     if not name:
         raise HTTPException(status_code=400, detail="Missing name")
 
@@ -221,8 +256,9 @@ def create_site(name: str, token: Optional[str] = None, db: Session = Depends(ge
 
     return {"created": True, "site_id": s.id, "site": s.name, "token": s.token}
 
+
 # ---------------------------------------------------------------------
-# INGEST (AGENT → BACKEND)
+# INGEST (AGENT -> BACKEND)
 # ---------------------------------------------------------------------
 
 @app.post("/ingest")
@@ -258,6 +294,20 @@ def ingest(
         if not ip:
             continue
 
+        incoming_name = (d.get("name") or "").strip() or ip
+        incoming_type = str(d.get("device_type") or d.get("type") or "unknown").strip() or "unknown"
+        incoming_driver = (d.get("driver") or "ping").strip() or "ping"
+
+        incoming_building = (d.get("building") or "").strip()
+        incoming_room = (d.get("room") or "").strip()
+
+        incoming_status = (d.get("status") or "unknown").strip() or "unknown"
+        incoming_detail = (d.get("detail") or "").strip() or None
+
+        incoming_metrics = d.get("metrics") or {}
+        if not isinstance(incoming_metrics, dict):
+            incoming_metrics = {}
+
         dev = (
             db.query(Device)
             .filter(Device.site_id == site.id)
@@ -267,7 +317,13 @@ def ingest(
 
         is_new = False
         if dev is None:
-            dev = Device(site_id=site.id, ip=ip)
+            dev = Device(
+                site_id=site.id,
+                ip=ip,
+                name=incoming_name,
+                device_type=incoming_type,
+                driver=incoming_driver,
+            )
             db.add(dev)
             db.flush()  # garantit dev.id
             is_new = True
@@ -279,37 +335,33 @@ def ingest(
             "metrics": dev.metrics or {},
         }
 
-        incoming = {
-            "name": (d.get("name") or ip).strip(),
-            "type": str(d.get("type") or d.get("device_type") or "unknown").strip() or "unknown",
-            "driver": (d.get("driver") or "ping").strip() or "ping",
-            "building": (d.get("building") or "").strip(),
-            "room": (d.get("room") or "").strip(),
-            "status": (d.get("status") or "unknown").strip() or "unknown",
-            "detail": (d.get("detail") or None),
-            "metrics": d.get("metrics") or {},
-        }
-        if not isinstance(incoming["metrics"], dict):
-            incoming["metrics"] = {}
-
-        dev.name = incoming["name"]
-        dev.device_type = incoming["type"]
-        dev.driver = incoming["driver"]
-        dev.building = incoming["building"]
-        dev.room = incoming["room"]
-        dev.status = incoming["status"]
-        dev.detail = incoming["detail"]
-        dev.metrics = incoming["metrics"]
+        # Upsert device
+        dev.name = incoming_name
+        dev.device_type = incoming_type
+        dev.driver = incoming_driver
+        dev.building = incoming_building
+        dev.room = incoming_room
+        dev.status = incoming_status
+        dev.detail = incoming_detail
+        dev.metrics = incoming_metrics
         dev.last_seen = now
 
-        if is_new or _should_log_event(prev_snapshot, incoming):
+        # Historique
+        new_snapshot = {
+            "status": incoming_status,
+            "detail": incoming_detail,
+            "driver": incoming_driver,
+            "metrics": incoming_metrics,
+        }
+
+        if is_new or _should_log_event(prev_snapshot, new_snapshot):
             ev = DeviceEvent(
                 device_id=dev.id,
                 site_id=site.id,
                 ip=ip,
-                status=incoming["status"],
-                detail=incoming["detail"],
-                metrics=incoming["metrics"],
+                status=incoming_status,
+                detail=incoming_detail,
+                metrics=incoming_metrics,
             )
             db.add(ev)
 
@@ -318,30 +370,33 @@ def ingest(
     db.commit()
     return {"ok": True, "upserted": upserted}
 
+
 # ---------------------------------------------------------------------
-# API DEVICES (JSON)
+# API (JSON)
 # ---------------------------------------------------------------------
 
 @app.get("/devices")
 def list_devices(db: Session = Depends(get_db)):
     rows = db.query(Device).order_by(Device.site_id.asc(), Device.ip.asc()).all()
-    return [
-        {
-            "id": d.id,
-            "site_id": d.site_id,
-            "name": d.name,
-            "ip": d.ip,
-            "type": d.device_type,
-            "driver": d.driver,
-            "building": d.building,
-            "room": d.room,
-            "status": d.status,
-            "detail": d.detail,
-            "metrics": d.metrics or {},
-            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-        }
-        for d in rows
-    ]
+    out: List[Dict[str, Any]] = []
+    for d in rows:
+        out.append(
+            {
+                "id": d.id,
+                "site_id": d.site_id,
+                "name": d.name,
+                "ip": d.ip,
+                "type": d.device_type,
+                "driver": d.driver,
+                "building": d.building,
+                "room": d.room,
+                "status": d.status,
+                "detail": d.detail,
+                "metrics": d.metrics or {},
+                "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+            }
+        )
+    return out
 
 
 @app.get("/devices/{device_id}")
@@ -389,8 +444,9 @@ def device_events(device_id: int, limit: int = 100, db: Session = Depends(get_db
         for e in rows
     ]
 
+
 # ---------------------------------------------------------------------
-# UI DASHBOARD
+# UI : Dashboard
 # ---------------------------------------------------------------------
 
 @app.get("/ui", response_class=HTMLResponse)
@@ -402,13 +458,25 @@ def ui_dashboard(request: Request, db: Session = Depends(get_db)):
     for s in sites:
         s_devs = [d for d in devices if d.site_id == s.id]
         offline = sum(1 for d in s_devs if (d.status or "").lower() == "offline")
-        site_cards.append({
-            "id": s.id,
-            "name": s.name,
-            "device_count": len(s_devs),
-            "offline_count": offline,
-            "has_contact": bool((s.contact_email or "").strip() or (s.contact_phone or "").strip()),
-        })
+        unknown = sum(1 for d in s_devs if (d.status or "").lower() == "unknown")
+        online = sum(1 for d in s_devs if (d.status or "").lower() == "online")
+
+        has_contact = bool(
+            (getattr(s, "contact_email", "") or "").strip()
+            or (getattr(s, "contact_phone", "") or "").strip()
+        )
+
+        site_cards.append(
+            {
+                "id": s.id,
+                "name": s.name,
+                "device_count": len(s_devs),
+                "online_count": online,
+                "offline_count": offline,
+                "unknown_count": unknown,
+                "has_contact": has_contact,
+            }
+        )
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -424,8 +492,9 @@ def ui_dashboard(request: Request, db: Session = Depends(get_db)):
         },
     )
 
+
 # ---------------------------------------------------------------------
-# UI SITES
+# UI : Sites (liste + création)
 # ---------------------------------------------------------------------
 
 @app.get("/ui/sites", response_class=HTMLResponse)
@@ -436,6 +505,36 @@ def ui_sites(request: Request, db: Session = Depends(get_db)):
         {"request": request, "sites": sites},
     )
 
+
+@app.post("/ui/sites/create")
+def ui_sites_create(
+    name: str = Form(...),
+    token: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    name = (name or "").strip()
+    token = (token or "").strip()
+
+    if not name:
+        return RedirectResponse("/ui/sites", status_code=303)
+
+    existing = db.query(Site).filter(Site.name == name).first()
+    if existing:
+        return RedirectResponse("/ui/sites", status_code=303)
+
+    if not token:
+        token = secrets.token_urlsafe(32)
+
+    s = Site(name=name, token=token)
+    db.add(s)
+    db.commit()
+
+    return RedirectResponse("/ui/sites", status_code=303)
+
+
+# ---------------------------------------------------------------------
+# UI : Site detail + contact
+# ---------------------------------------------------------------------
 
 @app.get("/ui/sites/{site_id}", response_class=HTMLResponse)
 def ui_site_detail(request: Request, site_id: int, db: Session = Depends(get_db)):
@@ -452,13 +551,12 @@ def ui_site_detail(request: Request, site_id: int, db: Session = Depends(get_db)
 
     return templates.TemplateResponse(
         "site_detail.html",
-        {"request": request, "site": site, "devices": devices},
+        {"request": request, "site": site, "devices": devices, "saved": False},
     )
 
 
-@app.post("/ui/sites/{site_id}/contact", response_class=HTMLResponse)
+@app.post("/ui/sites/{site_id}/contact")
 def ui_site_update_contact(
-    request: Request,
     site_id: int,
     contact_first_name: str = Form(""),
     contact_last_name: str = Form(""),
@@ -471,6 +569,8 @@ def ui_site_update_contact(
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
 
+    # Champs optionnels: si votre modèle Site n'a pas ces colonnes, ceci plantera.
+    # Assurez-vous que Site possède ces colonnes (comme prévu).
     site.contact_first_name = contact_first_name.strip()
     site.contact_last_name = contact_last_name.strip()
     site.contact_title = contact_title.strip()
@@ -478,25 +578,17 @@ def ui_site_update_contact(
     site.contact_phone = contact_phone.strip()
     db.commit()
 
-    devices = (
-        db.query(Device)
-        .filter(Device.site_id == site_id)
-        .order_by(Device.building.asc(), Device.room.asc(), Device.ip.asc())
-        .all()
-    )
+    return RedirectResponse(f"/ui/sites/{site_id}", status_code=303)
 
-    return templates.TemplateResponse(
-        "site_detail.html",
-        {"request": request, "site": site, "devices": devices, "saved": True},
-    )
 
 # ---------------------------------------------------------------------
-# UI AGENTS / DEVICES
+# UI : Agents
 # ---------------------------------------------------------------------
 
 @app.get("/ui/agents", response_class=HTMLResponse)
 def ui_agents(request: Request, db: Session = Depends(get_db)):
     sites = db.query(Site).order_by(Site.id.asc()).all()
+
     view = []
     for s in sites:
         count = db.query(Device).filter(Device.site_id == s.id).count()
@@ -522,6 +614,7 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
     )
 
     grouped: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+
     for d in rows:
         building = (d.building or "").strip() or "—"
         room = (d.room or "").strip() or "—"
@@ -534,25 +627,31 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
         m_view["uptime_human"] = _uptime_centis_to_human(m.get("sys_uptime"))
         m_view["sys_descr_short"] = _sys_descr_short(m.get("sys_descr"))
 
-        grouped.setdefault(building, {}).setdefault(room, []).append({
+        dv = {
             "id": d.id,
+            "site_id": d.site_id,
             "name": d.name,
             "ip": d.ip,
             "device_type": d.device_type,
             "driver": d.driver,
+            "building": d.building,
+            "room": d.room,
             "status": d.status,
             "detail": d.detail,
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
             "metrics": m_view,
-        })
+        }
+
+        grouped.setdefault(building, {}).setdefault(room, []).append(dv)
 
     return templates.TemplateResponse(
         "agent_devices.html",
         {"request": request, "site": {"id": site.id, "name": site.name}, "grouped": grouped},
     )
 
+
 # ---------------------------------------------------------------------
-# UI DEVICE DETAIL (WITH HISTORY)
+# UI : Device detail + metrics + historique
 # ---------------------------------------------------------------------
 
 @app.get("/ui/devices/{device_id}", response_class=HTMLResponse)
@@ -583,14 +682,16 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
         em = e.metrics or {}
         if not isinstance(em, dict):
             em = {}
-        events_view.append({
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-            "status": e.status,
-            "detail": e.detail,
-            "uptime_human": _uptime_centis_to_human(em.get("sys_uptime")),
-            "sys_descr_short": _sys_descr_short(em.get("sys_descr")),
-            "snmp_ok": em.get("snmp_ok"),
-        })
+        events_view.append(
+            {
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "status": e.status,
+                "detail": e.detail,
+                "snmp_ok": em.get("snmp_ok"),
+                "uptime_human": _uptime_centis_to_human(em.get("sys_uptime")),
+                "sys_descr_short": _sys_descr_short(em.get("sys_descr")),
+            }
+        )
 
     device_view = {
         "id": d.id,
