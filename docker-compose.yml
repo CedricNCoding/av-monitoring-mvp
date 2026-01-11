@@ -26,6 +26,10 @@ services:
   agent:
     build: ./agent
     container_name: avmvp-agent
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./agent-config:/agent/config
     environment:
       API_URL: http://backend:8000/ingest
       SITE_NAME: site-demo

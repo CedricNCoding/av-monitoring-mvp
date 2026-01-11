@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Agent AV - Admin locale</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    input, select { padding: 6px; margin: 4px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    td, th { border: 1px solid #ddd; padding: 8px; }
+    .row { display:flex; gap:24px; align-items:flex-start; }
+    .card { border:1px solid #ddd; padding:16px; border-radius:8px; flex:1; }
+    button { padding: 6px 10px; margin-top: 8px; }
+    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
+  </style>
+</head>
+<body>
+  <h1>Agent AV — Administration locale</h1>
+
+  <div class="row">
+    <div class="card">
+      <h2>Paramètres</h2>
+      <form method="post" action="/settings">
+        <div>API URL: <input name="api_url" size="50" value="{{ cfg.api_url }}"></div>
+        <div>Site Name: <input name="site_name" value="{{ cfg.site_name }}"></div>
+        <div>Site Token: <input name="site_token" size="40" value="{{ cfg.site_token }}"></div>
+        <button type="submit">Enregistrer</button>
+      </form>
+      <p>
+        Exemple : <code>https://api.votre-saas.com/ingest</code>
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Collecte</h2>
+      <p>Statut: <b>{{ "RUNNING" if running else "STOPPED" }}</b></p>
+      <form method="post" action="/collector/start"><button type="submit">Start</button></form>
+      <form method="post" action="/collector/stop"><button type="submit">Stop</button></form>
+      <p style="margin-top:10px;">
+        Les envois se font toutes les 10s (MVP).
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2>Équipements surveillés</h2>
+
+    <form method="post" action="/devices/add">
+      IP: <input name="ip" placeholder="192.168.1.10" required>
+      Type: <input name="device_type" placeholder="projecteur / écran">
+      Driver:
+      <select name="driver">
+        <option value="ping">ping</option>
+        <option value="snmp">snmp (bientôt)</option>
+      </select>
+      <button type="submit">Ajouter</button>
+    </form>
+
+    <table>
+      <tr><th>IP</th><th>Type</th><th>Driver</th><th>Action</th></tr>
+      {% for d in cfg.devices %}
+      <tr>
+        <td>{{ d.ip }}</td>
+        <td>{{ d.type }}</td>
+        <td>{{ d.driver }}</td>
+        <td>
+          <form method="post" action="/devices/delete" style="display:inline;">
+            <input type="hidden" name="ip" value="{{ d.ip }}">
+            <button type="submit">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+</body>
+</html>
