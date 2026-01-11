@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from src.storage import load_config, save_config
-from src.collector import run_forever
+from src.collector import run_forever, get_last_status
 
 CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
 
@@ -32,14 +32,18 @@ def stop_collector() -> None:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     cfg = load_config(CONFIG_PATH)
+    last_status = get_last_status()
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "cfg": cfg,
             "running": collector_running(),
+          "last_status": last_status,
         },
     )
+    
 
 @app.post("/settings")
 def update_settings(

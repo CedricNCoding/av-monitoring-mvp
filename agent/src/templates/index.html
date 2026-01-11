@@ -40,6 +40,47 @@
         Les envois se font toutes les 10s (MVP).
       </p>
     </div>
+
+  <div class="card" style="margin-top:16px;">
+      <h2>Dernier relevé</h2>
+
+    <p><b>Dernière collecte (UTC)</b> : {{ last_status.last_run_at or "—" }}</p>
+    {% if last_status.last_collect_error %}
+      <p style="color:#b00020;"><b>Erreur collecte</b> : {{ last_status.last_collect_error }}</p>
+    {% endif %}
+
+    <p><b>Dernier envoi (UTC)</b> : {{ last_status.last_send_at or "—" }}</p>
+    <p><b>Envoi</b> :
+      {% if last_status.last_send_ok is none %}
+      —
+     {% elif last_status.last_send_ok %}
+       OK
+     {% else %}
+       KO
+     {% endif %}
+    </p>
+    {% if last_status.last_send_error %}
+     <p style="color:#b00020;"><b>Erreur envoi</b> : {{ last_status.last_send_error }}</p>
+    {% endif %}
+
+  <h3 style="margin-top:12px;">Détail dernier payload</h3>
+  {% if last_status.last_payload %}
+    <table>
+      <tr><th>IP</th><th>Status</th><th>Détail</th><th>Nature (driver)</th></tr>
+      {% for d in last_status.last_payload %}
+      <tr>
+        <td>{{ d.ip }}</td>
+        <td>{{ d.status }}</td>
+        <td>{{ d.detail or "" }}</td>
+        <td>{{ "ping" if d.detail and "ping" in d.detail else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>—</p>
+  {% endif %}
+  </div>
+
   </div>
 
   <div class="card" style="margin-top:16px;">
