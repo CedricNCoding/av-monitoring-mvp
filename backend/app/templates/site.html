@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AV Monitoring — Sites</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+    .card { border:1px solid #ddd; border-radius:8px; padding:16px; flex:1; min-width:320px; }
+    input { padding: 6px; margin: 4px 0; width: 100%; box-sizing:border-box; }
+    button { padding: 8px 12px; margin-top: 8px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background:#fafafa; text-align:left; }
+    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
+    .muted { color:#666; font-size: 12px; }
+    .ok { color:#1b5e20; font-weight:700; }
+    .warn { color:#b26a00; font-weight:700; }
+  </style>
+</head>
+<body>
+  <h1>Sites</h1>
+  <p class="muted">Création de sites + génération automatique de token. Conservez le token (secret).</p>
+
+  <div class="row">
+    <div class="card">
+      <h2>Créer un site</h2>
+
+      {% if created %}
+        <p class="ok">Site créé.</p>
+        <p>
+          <b>Site ID</b> : <code>{{ created.site_id }}</code><br>
+          <b>Nom</b> : <code>{{ created.site }}</code><br>
+          <b>Token</b> : <code>{{ created.token }}</code>
+        </p>
+        <p class="muted">Copiez ce token dans l’agent (UI locale agent).</p>
+      {% elif error %}
+        <p class="warn"><b>Erreur</b> : {{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/ui/sites/create">
+        <label>Nom du site</label>
+        <input name="name" placeholder="ex: site-paris" required>
+        <button type="submit">Créer + Générer token</button>
+      </form>
+
+      <p class="muted" style="margin-top:10px;">
+        Astuce : si le site existe déjà, vous le verrez dans la liste ci-dessous.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Sites existants</h2>
+
+      <table>
+        <tr><th>ID</th><th>Nom</th><th>Token</th></tr>
+        {% for s in sites %}
+        <tr>
+          <td><code>{{ s.id }}</code></td>
+          <td><code>{{ s.name }}</code></td>
+          <td><code>{{ s.token }}</code></td>
+        </tr>
+        {% endfor %}
+      </table>
+
+      <p class="muted" style="margin-top:10px;">
+        Note : en production, on ne devrait pas afficher le token en clair. Pour MVP interne, c’est acceptable.
+      </p>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-top:16px;">
+    Navigation : <a href="/ui/agents">UI Agents</a>
+  </p>
+</body>
+</html>
