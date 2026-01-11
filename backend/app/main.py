@@ -47,7 +47,7 @@ def create_site(name: str, token: str, db: Session = Depends(get_db)):
 @app.post("/ingest")
 def ingest(
     payload: Dict[str, Any],
-    x_site_token: Optional[str] = Header(default=None, convert_underscores=False),
+    x_site_token: Optional[str] = Header(default=None, alias="X-Site-Token"),
     db: Session = Depends(get_db),
 ):
     """
