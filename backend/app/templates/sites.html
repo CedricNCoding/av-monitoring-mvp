@@ -1,166 +1,172 @@
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>AV Monitoring — Sites</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AV Monitoring — Administration des Sites</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    h1 { margin-bottom: 4px; }
-    .muted { color:#666; font-size: 12px; }
-
-    .row {
-      display:flex;
-      gap:16px;
-      flex-wrap:wrap;
-      align-items:flex-start;
-      margin-top: 16px;
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
     }
 
-    .card {
-      border:1px solid #ddd;
-      border-radius:8px;
-      padding:16px;
-      flex:1;
-      min-width:320px;
+    body { 
+      font-family: 'Inter', system-ui, sans-serif; 
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 32px;
+      line-height: 1.5;
     }
 
-    input {
-      padding: 6px;
-      margin: 6px 0;
+    .container { max-width: 1200px; margin: 0 auto; }
+
+    header { margin-bottom: 32px; }
+    h1 { font-size: 28px; font-weight: 800; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+    .muted { color: var(--text-muted); font-size: 14px; }
+
+    /* Layout */
+    .row { display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: flex-start; }
+
+    @media (max-width: 900px) {
+      .row { grid-template-columns: 1fr; }
+    }
+
+    /* Cards */
+    .card { 
+      background: var(--card-bg); 
+      border: 1px solid var(--border); 
+      border-radius: 12px; 
+      padding: 24px; 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    }
+    h2 { font-size: 18px; font-weight: 700; margin: 0 0 20px 0; }
+
+    /* Form */
+    label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+    input { 
+      width: 100%; 
+      padding: 10px 12px; 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      font-size: 14px; 
+      margin-bottom: 12px;
+      box-sizing: border-box;
+    }
+    input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+    button { 
       width: 100%;
-      box-sizing:border-box;
+      background: var(--primary); 
+      color: white; 
+      border: none; 
+      padding: 11px; 
+      border-radius: 8px; 
+      font-weight: 600; 
+      cursor: pointer; 
+      transition: all 0.2s;
     }
+    button:hover { background: var(--primary-hover); transform: translateY(-1px); }
 
-    button {
-      padding: 8px 12px;
-      margin-top: 8px;
-      cursor: pointer;
-    }
+    /* Tables */
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 12px; background: #fcfcfd; color: var(--text-muted); font-weight: 600; border-bottom: 2px solid var(--border); }
+    td { padding: 12px; border-bottom: 1px solid var(--border); }
+    tr:hover { background: #f8fafc; }
 
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-top: 12px;
-    }
+    /* Feedback */
+    .status-box { padding: 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+    .status-box.ok { background: #f0fdf4; color: var(--success); border: 1px solid #bbf7d0; }
+    .status-box.warn { background: #fffbeb; color: var(--warning); border: 1px solid #fef3c7; }
+    
+    code { font-family: 'JetBrains Mono', monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--primary); font-size: 12px; }
+    
+    .token-cell { font-family: monospace; color: var(--text-muted); font-size: 11px; }
 
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      vertical-align: top;
-    }
-
-    th {
-      background:#fafafa;
-      text-align:left;
-    }
-
-    code {
-      background:#f4f4f4;
-      padding:2px 6px;
-      border-radius:4px;
-      font-family: monospace;
-      word-break: break-all;
-    }
-
-    .ok {
-      color:#1b5e20;
-      font-weight:700;
-    }
-
-    .warn {
-      color:#b26a00;
-      font-weight:700;
-    }
-
-    a {
-      text-decoration:none;
-    }
-
-    a:hover {
-      text-decoration:underline;
-    }
+    .nav-footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; }
+    .nav-footer a { color: var(--primary); text-decoration: none; font-weight: 500; margin: 0 10px; font-size: 14px; }
   </style>
 </head>
 <body>
 
-  <h1>Sites</h1>
-  <p class="muted">
-    Administration des sites (agents).  
-    Chaque site correspond à un agent (ou groupe d’agents) authentifié par un token.
-  </p>
+  <div class="container">
+    <header>
+      <h1>Administration des Sites</h1>
+      <p class="muted">Gérez les agents déployés et générez les jetons d'authentification par site.</p>
+    </header>
 
-  <div class="row">
+    <div class="row">
+      <div class="card">
+        <h2>Créer un site</h2>
 
-    <!-- Création d’un site -->
-    <div class="card">
-      <h2>Créer un site</h2>
+        {% if created %}
+          <div class="status-box {{ 'warn' if created.already else 'ok' }}">
+            <strong>{{ 'Information' if created.already else 'Succès !' }}</strong><br>
+            {{ 'Ce site existe déjà.' if created.already else 'Le site a été créé.' }}
+          </div>
 
-      {% if created %}
-        {% if created.already %}
-          <p class="warn">Ce site existait déjà. Token actuel :</p>
-        {% else %}
-          <p class="ok">Site créé avec succès.</p>
+          <div style="background: #f1f5f9; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">
+            <div style="margin-bottom:8px">ID: <code>{{ created.site_id }}</code></div>
+            <div>Token: <code style="word-break: break-all; background: white;">{{ created.token }}</code></div>
+            <p class="muted" style="margin: 8px 0 0 0; font-size: 11px;">
+              ⚡ Copiez ce token dans la configuration de votre agent local.
+            </p>
+          </div>
+        {% elif error %}
+          <div class="status-box warn">Erreur : {{ error }}</div>
         {% endif %}
 
-        <p>
-          <b>Site ID</b> : <code>{{ created.site_id }}</code><br>
-          <b>Nom</b> : <code>{{ created.site }}</code><br>
-          <b>Token</b> : <code>{{ created.token }}</code>
-        </p>
+        <form method="post" action="/ui/sites/create">
+          <label>Nom du site</label>
+          <input name="name" placeholder="ex : agence-lyon-01" required>
+          <button type="submit">Générer le site & le token</button>
+        </form>
+      </div>
 
-        <p class="muted">
-          👉 Copiez ce token dans l’agent (UI locale agent ou fichier config).
-        </p>
-      {% elif error %}
-        <p class="warn">Erreur : {{ error }}</p>
-      {% endif %}
-
-      <form method="post" action="/ui/sites/create">
-        <label class="muted">Nom du site</label>
-        <input name="name" placeholder="ex : site-paris" required>
-        <button type="submit">Créer + générer token</button>
-      </form>
-
-      <p class="muted" style="margin-top:10px;">
-        ⚠️ En production, les tokens ne devraient pas être affichés en clair.
-      </p>
+      <div class="card">
+        <h2>Sites configurés</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Désignation</th>
+                <th>Token</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in sites %}
+              <tr>
+                <td><code>{{ s.id }}</code></td>
+                <td><strong>{{ s.name }}</strong></td>
+                <td class="token-cell">{{ s.token[:12] }}...{{ s.token[-4:] }}</td>
+                <td style="text-align: right;">
+                  <a href="/ui/agents/{{ s.id }}/devices" style="color: var(--primary); font-weight: 600; text-decoration: none;">Voir devices →</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
-    <!-- Liste des sites existants -->
-    <div class="card">
-      <h2>Sites existants</h2>
-
-      <table>
-        <tr>
-          <th>ID</th>
-          <th>Nom</th>
-          <th>Token</th>
-          <th>Accès</th>
-        </tr>
-        {% for s in sites %}
-        <tr>
-          <td><code>{{ s.id }}</code></td>
-          <td><code>{{ s.name }}</code></td>
-          <td><code>{{ s.token }}</code></td>
-          <td>
-            <a href="/ui/agents/{{ s.id }}/devices">Devices</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </table>
-
-      <p class="muted" style="margin-top:10px;">
-        Astuce : cliquez sur “Devices” pour voir l’inventaire par bâtiment / salle.
-      </p>
-    </div>
-
+    <footer class="nav-footer">
+      <a href="/ui">Tableau de bord</a>
+      <a href="/ui/agents">Liste des Agents</a>
+      <a href="/ui/sites">Administration Sites</a>
+    </footer>
   </div>
-
-  <p class="muted" style="margin-top:20px;">
-    Navigation :
-    <a href="/ui/agents">Agents</a> |
-    <a href="/ui/sites">Sites</a>
-  </p>
 
 </body>
 </html>

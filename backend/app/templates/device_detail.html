@@ -1,82 +1,157 @@
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Device {{ device.id }}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    .muted { color:#666; font-size: 12px; }
-    .row { display:flex; gap:16px; flex-wrap: wrap; }
-    .card { border:1px solid #ddd; border-radius:8px; padding:16px; flex:1; min-width:320px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background:#fafafa; text-align:left; width: 240px; }
-    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
-    pre { background:#0b1020; color:#e7e7e7; padding:12px; border-radius:8px; overflow:auto; }
-    a { text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .ok { color:#1b5e20; font-weight: 700; }
-    .warn { color:#b26a00; font-weight: 700; }
-    .bad { color:#b00020; font-weight: 700; }
-    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; }
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --dark-code: #0f172a;
+    }
+
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; }
+
+    /* Header & Nav */
+    .back-link { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); text-decoration: none; font-size: 14px; margin-bottom: 20px; transition: color 0.2s; }
+    .back-link:hover { color: var(--primary); }
+    
+    header { margin-bottom: 32px; display: flex; align-items: center; justify-content: space-between; }
+    h1 { font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -0.025em; }
+    h2 { font-size: 18px; font-weight: 700; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px; }
+
+    /* Layout Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 24px; margin-top: 24px; }
+    
+    /* Cards */
+    .card { 
+      background: var(--card-bg); 
+      border: 1px solid var(--border); 
+      border-radius: 12px; 
+      padding: 24px; 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    }
+    
+    /* Tables */
+    table { border-collapse: collapse; width: 100%; }
+    th { 
+      text-align: left; 
+      font-size: 13px; 
+      font-weight: 500; 
+      color: var(--text-muted); 
+      padding: 10px 0; 
+      border-bottom: 1px solid #f1f5f9; 
+      width: 160px;
+    }
+    td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; font-weight: 500; }
+    tr:last-child th, tr:last-child td { border-bottom: none; }
+
+    /* Elements */
+    code { font-family: 'JetBrains Mono', monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--primary); font-size: 0.9em; }
+    pre { 
+      background: var(--dark-code); 
+      color: #94a3b8; 
+      padding: 20px; 
+      border-radius: 12px; 
+      overflow: auto; 
+      font-size: 13px; 
+      line-height: 1.6;
+      border: 1px solid #334155;
+    }
+    
+    /* Status Labels */
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; text-transform: uppercase; font-size: 12px; }
+    .status-badge.ok { color: var(--success); }
+    .status-badge.bad { color: var(--danger); }
+    .status-badge.warn { color: var(--warning); }
+    
+    .pill { background: #f1f5f9; padding: 2px 10px; border-radius: 999px; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border); }
+
+    .muted { color: var(--text-muted); font-size: 13px; font-weight: 400; }
   </style>
 </head>
 <body>
-  <p>
-    <a href="/ui/agents/{{ device.site_id }}/devices">← Retour agent</a>
-  </p>
+  <div class="container">
+    <a href="/ui/agents/{{ device.site_id }}/devices" class="back-link">← Retour aux équipements du site</a>
 
-  <h1>Device #{{ device.id }}</h1>
-  <div class="muted">Fiche diagnostic (metrics + uptime lisible).</div>
+    <header>
+      <div>
+        <h1>Device #{{ device.id }}</h1>
+        <div class="muted">Diagnostic détaillé et métriques temps réel</div>
+      </div>
+      <div class="pill" style="padding: 8px 16px; font-size: 14px;">Driver: {{ device.driver }}</div>
+    </header>
 
-  <div class="row" style="margin-top:12px;">
-    <div class="card">
-      <h2>Inventaire</h2>
-      <table>
-        <tr><th>Site</th><td>{{ device.site_id }}</td></tr>
-        <tr><th>Bâtiment</th><td>{{ device.building or "—" }}</td></tr>
-        <tr><th>Salle</th><td>{{ device.room or "—" }}</td></tr>
-        <tr><th>Nom</th><td>{{ device.name }}</td></tr>
-        <tr><th>IP</th><td><code>{{ device.ip }}</code></td></tr>
-        <tr><th>Type</th><td>{{ device.device_type }}</td></tr>
-        <tr><th>Driver</th><td><span class="pill">{{ device.driver }}</span></td></tr>
-      </table>
+    <div class="grid">
+      <div class="card">
+        <h2>📂 Inventaire</h2>
+        <table>
+          <tr><th>Localisation</th><td>{{ device.building or "—" }} / {{ device.room or "—" }}</td></tr>
+          <tr><th>Nom DNS/mDNS</th><td><strong>{{ device.name }}</strong></td></tr>
+          <tr><th>Adresse IP</th><td><code>{{ device.ip }}</code></td></tr>
+          <tr><th>Type d'équipement</th><td>{{ device.device_type }}</td></tr>
+          <tr><th>Site ID</th><td><code>{{ device.site_id }}</code></td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>⚡ État & Connectivité</h2>
+        <table>
+          <tr>
+            <th>Status actuel</th>
+            <td>
+              {% if device.status == "online" %}
+                <span class="status-badge ok">● Online</span>
+              {% elif device.status == "offline" %}
+                <span class="status-badge bad">● Offline</span>
+              {% else %}
+                <span class="status-badge warn">● {{ device.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr><th>Détail erreur</th><td><code style="color:var(--danger)">{{ device.detail or "Aucune erreur" }}</code></td></tr>
+          <tr><th>Last seen (UTC)</th><td class="muted">{{ device.last_seen or "Jamais" }}</td></tr>
+          <tr><th>SNMP Status</th><td>{{ "✅ Connecté" if metrics.snmp_ok else "❌ Échec" }}</td></tr>
+          <tr><th>Uptime</th><td><span style="color:var(--primary)">{{ metrics.uptime_human or "—" }}</span></td></tr>
+        </table>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>État</h2>
-      <table>
-        <tr>
-          <th>Status</th>
-          <td>
-            {% if device.status == "online" %}
-              <span class="ok">online</span>
-            {% elif device.status == "offline" %}
-              <span class="bad">offline</span>
-            {% else %}
-              <span class="warn">{{ device.status }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        <tr><th>Détail</th><td><code>{{ device.detail or "—" }}</code></td></tr>
-        <tr><th>Last seen (UTC)</th><td class="muted">{{ device.last_seen or "—" }}</td></tr>
-      </table>
-
-      <h3 style="margin-top:12px;">SNMP / Metrics</h3>
-      <table>
-        <tr><th>SNMP OK</th><td>{{ metrics.snmp_ok or "—" }}</td></tr>
-        <tr><th>Uptime</th><td>{{ metrics.uptime_human or "—" }}</td></tr>
-        <tr><th>sysDescr</th><td>{{ metrics.sys_descr or "—" }}</td></tr>
-        <tr><th>sysUpTime brut</th><td>{{ metrics.sys_uptime or "—" }}</td></tr>
-        <tr><th>Port SNMP</th><td>{{ metrics.snmp_port or "—" }}</td></tr>
-        <tr><th>Erreur SNMP</th><td>{{ metrics.snmp_error or "—" }}</td></tr>
-      </table>
+    <div class="card" style="margin-top: 24px;">
+      <h2>🔍 Détails SNMP</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+        <table>
+          <tr><th>sysDescr</th><td class="muted" style="line-height: 1.4;">{{ metrics.sys_descr or "—" }}</td></tr>
+        </table>
+        <table>
+          <tr><th>sysUpTime brut</th><td>{{ metrics.sys_uptime or "—" }}</td></tr>
+          <tr><th>Port de scan</th><td><code>{{ metrics.snmp_port or "161" }}</code></td></tr>
+          <tr><th>Dernière erreur</th><td class="bad" style="font-size: 12px;">{{ metrics.snmp_error or "—" }}</td></tr>
+        </table>
+      </div>
     </div>
-  </div>
 
-  <div class="card" style="margin-top:16px;">
-    <h2>Metrics JSON (brut)</h2>
-    <pre>{{ metrics_json }}</pre>
+    <div style="margin-top: 32px;">
+      <h2 class="muted" style="margin-bottom: 8px; font-size: 14px; text-transform: uppercase;">Données brutes (JSON)</h2>
+      <pre>{{ metrics_json }}</pre>
+    </div>
   </div>
 </body>
 </html>

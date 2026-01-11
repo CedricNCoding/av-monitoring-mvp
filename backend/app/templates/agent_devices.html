@@ -1,77 +1,155 @@
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Devices (Agent {{ site.id }})</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    .muted { color:#666; font-size: 12px; }
-    a { text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background:#fafafa; text-align:left; }
-    .section { margin-top: 18px; }
-    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; }
-    .ok { color:#1b5e20; font-weight:700; }
-    .warn { color:#b26a00; font-weight:700; }
-    .bad { color:#b00020; font-weight:700; }
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --border: #e2e8f0;
+    }
+
+    body { 
+      font-family: 'Inter', -apple-system, sans-serif; 
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; }
+
+    /* Navigation */
+    .back-link { margin-bottom: 20px; display: inline-block; color: var(--primary); text-decoration: none; font-weight: 500; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+
+    header { margin-bottom: 32px; }
+    h1 { font-size: 24px; font-weight: 800; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.9em; color: var(--primary); }
+
+    /* Section & Typography */
+    .section { margin-top: 40px; }
+    h2 { font-size: 18px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-bottom: 20px; }
+    h3 { font-size: 16px; margin: 24px 0 12px 0; display: flex; align-items: center; gap: 8px; }
+    h3::before { content: "📍"; font-size: 14px; }
+
+    /* Table Design */
+    .table-container { 
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      margin-bottom: 24px;
+    }
+
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th { background: #fcfcfd; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background-color: #f8fafc; }
+
+    /* Status & Badges */
+    .pill { 
+      display: inline-flex; 
+      padding: 2px 10px; 
+      border-radius: 999px; 
+      background: #f1f5f9; 
+      font-size: 11px; 
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    
+    .status { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.02em; }
+    .status.ok { color: var(--success); }
+    .status.bad { color: var(--danger); }
+    .status.warn { color: var(--warning); }
+
+    .muted { color: var(--text-muted); font-size: 12px; }
+    .id-link { font-weight: 600; color: var(--primary); text-decoration: none; }
+    
+    /* Responsive adjustments */
+    @media (max-width: 1000px) {
+      .table-container { overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
-  <p><a href="/ui/agents">← Retour agents</a></p>
+  <div class="container">
+    <a href="/ui/agents" class="back-link">← Retour aux agents</a>
 
-  <h1>Devices — Agent/Site {{ site.id }} (<code>{{ site.name }}</code>)</h1>
-  <p class="muted">Tri : Bâtiment → Salle → IP. Cliquez sur l’ID pour le détail (metrics, uptime lisible).</p>
+    <header>
+      <h1>Devices — Site {{ site.name }} <code>ID:{{ site.id }}</code></h1>
+      <p class="muted">Tri hiérarchique : Bâtiment → Salle → IP. Cliquez sur l’ID pour les métriques détaillées.</p>
+    </header>
 
-  {% for building, rooms in grouped.items() %}
-    <div class="section">
-      <h2>Bâtiment : {{ building }}</h2>
+    {% for building, rooms in grouped.items() %}
+      <div class="section">
+        <h2>Bâtiment : {{ building }}</h2>
 
-      {% for room, devices in rooms.items() %}
-        <h3>Salle : {{ room }}</h3>
+        {% for room, devices in rooms.items() %}
+          <h3>{{ room }} <span class="muted">({{ devices|length }} devices)</span></h3>
 
-        <table>
-          <tr>
-            <th>ID</th>
-            <th>Nom</th>
-            <th>IP</th>
-            <th>Type</th>
-            <th>Driver</th>
-            <th>Status</th>
-            <th>Détail</th>
-            <th>Uptime</th>
-            <th>sysDescr (court)</th>
-            <th>Last seen (UTC)</th>
-          </tr>
-
-          {% for d in devices %}
-          {% set m = d.metrics or {} %}
-          <tr>
-            <td><a href="/ui/devices/{{ d.id }}">{{ d.id }}</a></td>
-            <td>{{ d.name }}</td>
-            <td><code>{{ d.ip }}</code></td>
-            <td>{{ d.device_type }}</td>
-            <td><span class="pill">{{ d.driver }}</span></td>
-            <td>
-              {% if d.status == "online" %}
-                <span class="ok">online</span>
-              {% elif d.status == "offline" %}
-                <span class="bad">offline</span>
-              {% else %}
-                <span class="warn">{{ d.status }}</span>
-              {% endif %}
-            </td>
-            <td><code>{{ d.detail or "—" }}</code></td>
-            <td>{{ m.uptime_human or "—" }}</td>
-            <td class="muted" style="max-width:420px;">{{ m.sys_descr_short or "—" }}</td>
-            <td class="muted">{{ d.last_seen or "—" }}</td>
-          </tr>
-          {% endfor %}
-        </table>
-      {% endfor %}
-    </div>
-  {% endfor %}
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nom de l'équipement</th>
+                  <th>IP</th>
+                  <th>Type / Driver</th>
+                  <th>Status</th>
+                  <th>Détail</th>
+                  <th>Uptime</th>
+                  <th>sysDescr</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for d in devices %}
+                {% set m = d.metrics or {} %}
+                <tr>
+                  <td><a href="/ui/devices/{{ d.id }}" class="id-link">#{{ d.id }}</a></td>
+                  <td><strong>{{ d.name }}</strong></td>
+                  <td><code>{{ d.ip }}</code></td>
+                  <td>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                      <span>{{ d.device_type }}</span>
+                      <span class="pill">{{ d.driver }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {% if d.status == "online" %}
+                      <span class="status ok">● online</span>
+                    {% elif d.status == "offline" %}
+                      <span class="status bad">● offline</span>
+                    {% else %}
+                      <span class="status warn">● {{ d.status }}</span>
+                    {% endif %}
+                  </td>
+                  <td><span class="muted" style="font-family: monospace;">{{ d.detail or "—" }}</span></td>
+                  <td>{{ m.uptime_human or "—" }}</td>
+                  <td class="muted" style="max-width:300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ m.sys_descr_short }}">
+                    {{ m.sys_descr_short or "—" }}
+                  </td>
+                  <td class="muted">{{ d.last_seen or "—" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
 </body>
 </html>
