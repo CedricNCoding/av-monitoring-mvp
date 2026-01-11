@@ -1,4 +1,3 @@
-# agent/src/webapp.py
 import os
 import threading
 
@@ -40,18 +39,16 @@ def index(request: Request):
     cfg = load_config(CONFIG_PATH)
     last_status = get_last_status()
 
-    # Normalise les anciens devices (compatibilité)
+    # Normalise device_cfg (compat)
     for d in cfg.get("devices", []):
         d.setdefault("name", "")
         d.setdefault("building", "")
         d.setdefault("room", "")
         d.setdefault("type", "unknown")
         d.setdefault("driver", "ping")
-        d.setdefault("snmp", {})
-
-    cfg.setdefault("reporting", {})
-    cfg["reporting"].setdefault("ok_interval_s", 3600)
-    cfg["reporting"].setdefault("ko_interval_s", 60)
+        d.setdefault("driver_cfg", {})
+        if not isinstance(d["driver_cfg"], dict):
+            d["driver_cfg"] = {}
 
     return templates.TemplateResponse(
         "index.html",
@@ -69,18 +66,11 @@ def update_settings(
     site_name: str = Form(...),
     site_token: str = Form(...),
     api_url: str = Form(...),
-    ok_interval_s: int = Form(3600),
-    ko_interval_s: int = Form(60),
 ):
     cfg = load_config(CONFIG_PATH)
     cfg["site_name"] = site_name.strip()
     cfg["site_token"] = site_token.strip()
     cfg["api_url"] = api_url.strip()
-
-    cfg.setdefault("reporting", {})
-    cfg["reporting"]["ok_interval_s"] = int(ok_interval_s)
-    cfg["reporting"]["ko_interval_s"] = int(ko_interval_s)
-
     save_config(CONFIG_PATH, cfg)
     return RedirectResponse("/", status_code=303)
 
@@ -93,10 +83,9 @@ def add_device(
     room: str = Form(""),
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
-    snmp_community: str = Form("public"),
-    snmp_port: int = Form(161),
-    snmp_timeout_s: int = Form(1),
-    snmp_retries: int = Form(1),
+    pjlink_password: str = Form(""),
+    pjlink_port: str = Form("4352"),
+    pjlink_timeout_s: str = Form("2"),
 ):
     cfg = load_config(CONFIG_PATH)
     cfg.setdefault("devices", [])
@@ -108,24 +97,36 @@ def add_device(
     if any(d.get("ip") == ip for d in cfg["devices"]):
         return RedirectResponse("/", status_code=303)
 
-    device = {
-        "ip": ip,
-        "name": name.strip(),
-        "building": building.strip(),
-        "room": room.strip(),
-        "type": device_type.strip(),
-        "driver": driver.strip(),
-    }
+    driver = (driver or "ping").strip().lower()
+    driver_cfg = {}
 
-    if driver.strip() == "snmp":
-        device["snmp"] = {
-            "community": snmp_community.strip() or "public",
-            "port": int(snmp_port),
-            "timeout_s": int(snmp_timeout_s),
-            "retries": int(snmp_retries),
+    if driver == "pjlink":
+        try:
+            port = int(pjlink_port)
+        except Exception:
+            port = 4352
+        try:
+            timeout_s = int(pjlink_timeout_s)
+        except Exception:
+            timeout_s = 2
+
+        driver_cfg = {
+            "password": (pjlink_password or "").strip(),
+            "port": port,
+            "timeout_s": timeout_s,
         }
 
-    cfg["devices"].append(device)
+    cfg["devices"].append(
+        {
+            "ip": ip,
+            "name": name.strip(),
+            "building": building.strip(),
+            "room": room.strip(),
+            "type": device_type.strip(),
+            "driver": driver,
+            "driver_cfg": driver_cfg,
+        }
+    )
     save_config(CONFIG_PATH, cfg)
     return RedirectResponse("/", status_code=303)
 
@@ -139,10 +140,9 @@ def update_device(
     room: str = Form(""),
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
-    snmp_community: str = Form("public"),
-    snmp_port: int = Form(161),
-    snmp_timeout_s: int = Form(1),
-    snmp_retries: int = Form(1),
+    pjlink_password: str = Form(""),
+    pjlink_port: str = Form("4352"),
+    pjlink_timeout_s: str = Form("2"),
 ):
     cfg = load_config(CONFIG_PATH)
     devices = cfg.get("devices", [])
@@ -155,6 +155,25 @@ def update_device(
     if ip != original_ip and any(d.get("ip") == ip for d in devices):
         return RedirectResponse("/", status_code=303)
 
+    driver = (driver or "ping").strip().lower()
+    driver_cfg = {}
+
+    if driver == "pjlink":
+        try:
+            port = int(pjlink_port)
+        except Exception:
+            port = 4352
+        try:
+            timeout_s = int(pjlink_timeout_s)
+        except Exception:
+            timeout_s = 2
+
+        driver_cfg = {
+            "password": (pjlink_password or "").strip(),
+            "port": port,
+            "timeout_s": timeout_s,
+        }
+
     for d in devices:
         if d.get("ip") == original_ip:
             d["ip"] = ip
@@ -162,18 +181,8 @@ def update_device(
             d["building"] = building.strip()
             d["room"] = room.strip()
             d["type"] = device_type.strip()
-            d["driver"] = driver.strip()
-
-            if driver.strip() == "snmp":
-                d["snmp"] = {
-                    "community": snmp_community.strip() or "public",
-                    "port": int(snmp_port),
-                    "timeout_s": int(snmp_timeout_s),
-                    "retries": int(snmp_retries),
-                }
-            else:
-                d["snmp"] = {}
-
+            d["driver"] = driver
+            d["driver_cfg"] = driver_cfg
             break
 
     cfg["devices"] = devices
