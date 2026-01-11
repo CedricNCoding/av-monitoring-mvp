@@ -1,12 +1,16 @@
+# agent/src/storage.py
 import json
 import os
 from typing import Any, Dict, List
-
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "site_name": "site-demo",
     "site_token": "change-me",
     "api_url": "http://backend:8000/ingest",
+    "reporting": {
+        "ok_interval_s": 3600,
+        "ko_interval_s": 60,
+    },
     "devices": [
         {
             "ip": "8.8.8.8",
@@ -15,7 +19,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "room": "N/A",
             "type": "network",
             "driver": "ping",
-            "snmp": {},
         },
         {
             "ip": "1.1.1.1",
@@ -24,26 +27,41 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "room": "N/A",
             "type": "network",
             "driver": "ping",
-            "snmp": {},
         },
     ],
 }
 
 
-def _to_int(value: Any, default: int) -> int:
-    try:
-        return int(str(value).strip())
-    except Exception:
-        return default
-
-
 def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Migration douce : complète les champs manquants dans les anciens config.json
+    sans forcer l'utilisateur à supprimer/recréer sa config.
+    """
     if not isinstance(cfg, dict):
         cfg = {}
 
     cfg.setdefault("site_name", DEFAULT_CONFIG["site_name"])
     cfg.setdefault("site_token", DEFAULT_CONFIG["site_token"])
     cfg.setdefault("api_url", DEFAULT_CONFIG["api_url"])
+
+    # reporting
+    cfg.setdefault("reporting", {})
+    if not isinstance(cfg["reporting"], dict):
+        cfg["reporting"] = {}
+
+    cfg["reporting"].setdefault("ok_interval_s", DEFAULT_CONFIG["reporting"]["ok_interval_s"])
+    cfg["reporting"].setdefault("ko_interval_s", DEFAULT_CONFIG["reporting"]["ko_interval_s"])
+
+    # garde-fous (évite 0 / négatifs / trop bas)
+    try:
+        cfg["reporting"]["ok_interval_s"] = max(60, int(cfg["reporting"]["ok_interval_s"]))
+    except Exception:
+        cfg["reporting"]["ok_interval_s"] = DEFAULT_CONFIG["reporting"]["ok_interval_s"]
+
+    try:
+        cfg["reporting"]["ko_interval_s"] = max(15, int(cfg["reporting"]["ko_interval_s"]))
+    except Exception:
+        cfg["reporting"]["ko_interval_s"] = DEFAULT_CONFIG["reporting"]["ko_interval_s"]
 
     devices = cfg.get("devices", [])
     if not isinstance(devices, list):
@@ -58,32 +76,30 @@ def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         if not ip:
             continue
 
-        driver = (d.get("driver") or "ping").strip()
-
         snmp_cfg = d.get("snmp") or {}
         if not isinstance(snmp_cfg, dict):
             snmp_cfg = {}
 
-        normalized = {
-            "ip": ip,
-            "name": (d.get("name") or "").strip(),
-            "building": (d.get("building") or "").strip(),
-            "room": (d.get("room") or "").strip(),
-            "type": (d.get("type") or d.get("device_type") or "unknown").strip(),
-            "driver": driver,
-            "snmp": {},
-        }
+        driver = (d.get("driver") or "ping").strip()
 
-        # SNMP uniquement si driver == "snmp"
-        if driver == "snmp":
-            normalized["snmp"] = {
-                "community": (snmp_cfg.get("community") or "public").strip() or "public",
-                "port": _to_int(snmp_cfg.get("port"), 161),
-                "timeout_s": _to_int(snmp_cfg.get("timeout_s"), 1),
-                "retries": _to_int(snmp_cfg.get("retries"), 1),
+        normalized_devices.append(
+            {
+                "ip": ip,
+                "name": (d.get("name") or "").strip(),
+                "building": (d.get("building") or "").strip(),
+                "room": (d.get("room") or "").strip(),
+                "type": (d.get("type") or d.get("device_type") or "unknown").strip(),
+                "driver": driver,
+                "snmp": {
+                    "community": (snmp_cfg.get("community") or "public").strip(),
+                    "port": int(snmp_cfg.get("port") or 161),
+                    "timeout_s": int(snmp_cfg.get("timeout_s") or 1),
+                    "retries": int(snmp_cfg.get("retries") or 1),
+                }
+                if (driver == "snmp" or d.get("snmp"))
+                else {},
             }
-
-        normalized_devices.append(normalized)
+        )
 
     cfg["devices"] = normalized_devices
     return cfg
@@ -91,7 +107,6 @@ def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 def load_config(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
-        # copie profonde
         return _normalize_config(json.loads(json.dumps(DEFAULT_CONFIG)))
 
     with open(path, "r", encoding="utf-8") as f:

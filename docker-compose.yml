@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   db:
     image: postgres:16
@@ -16,6 +18,10 @@ services:
     container_name: avmvp-backend
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/avmvp
+
+      # Rétention historique device_events
+      EVENT_RETENTION_DAYS: "90"
+      PURGE_INTERVAL_HOURS: "24"
     ports:
       - "8000:8000"
     depends_on:
@@ -28,6 +34,13 @@ services:
       - "8080:8080"
     volumes:
       - ./agent-config:/agent/config
+    environment:
+      API_URL: http://backend:8000/ingest
+      SITE_NAME: site-demo
+      SITE_TOKEN: change-me
+      DEVICES_JSON: >
+        [{"ip":"8.8.8.8","type":"test","driver":"ping"},
+         {"ip":"1.1.1.1","type":"test","driver":"ping"}]
     depends_on:
       - backend
 

@@ -1,3 +1,4 @@
+# agent/src/webapp.py
 import os
 import threading
 
@@ -34,29 +35,6 @@ def stop_collector() -> None:
     _stop_flag["stop"] = True
 
 
-def _to_int(value: str, default: int) -> int:
-    try:
-        return int(str(value).strip())
-    except Exception:
-        return default
-
-
-def _snmp_block(driver: str, community: str, port: str, timeout_s: str, retries: str) -> dict:
-    """
-    Construit le bloc SNMP stocké dans config.json.
-    Si driver != snmp => bloc vide.
-    """
-    if (driver or "").strip() != "snmp":
-        return {}
-
-    return {
-        "community": (community or "public").strip() or "public",
-        "port": _to_int(port, 161),
-        "timeout_s": _to_int(timeout_s, 1),
-        "retries": _to_int(retries, 1),
-    }
-
-
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     cfg = load_config(CONFIG_PATH)
@@ -69,17 +47,11 @@ def index(request: Request):
         d.setdefault("room", "")
         d.setdefault("type", "unknown")
         d.setdefault("driver", "ping")
+        d.setdefault("snmp", {})
 
-        # Normalisation SNMP
-        sn = d.get("snmp")
-        if not isinstance(sn, dict):
-            sn = {}
-        d["snmp"] = {
-            "community": (sn.get("community") or "public"),
-            "port": _to_int(sn.get("port", 161), 161),
-            "timeout_s": _to_int(sn.get("timeout_s", 1), 1),
-            "retries": _to_int(sn.get("retries", 1), 1),
-        } if d.get("driver") == "snmp" else {}
+    cfg.setdefault("reporting", {})
+    cfg["reporting"].setdefault("ok_interval_s", 3600)
+    cfg["reporting"].setdefault("ko_interval_s", 60)
 
     return templates.TemplateResponse(
         "index.html",
@@ -97,11 +69,18 @@ def update_settings(
     site_name: str = Form(...),
     site_token: str = Form(...),
     api_url: str = Form(...),
+    ok_interval_s: int = Form(3600),
+    ko_interval_s: int = Form(60),
 ):
     cfg = load_config(CONFIG_PATH)
     cfg["site_name"] = site_name.strip()
     cfg["site_token"] = site_token.strip()
     cfg["api_url"] = api_url.strip()
+
+    cfg.setdefault("reporting", {})
+    cfg["reporting"]["ok_interval_s"] = int(ok_interval_s)
+    cfg["reporting"]["ko_interval_s"] = int(ko_interval_s)
+
     save_config(CONFIG_PATH, cfg)
     return RedirectResponse("/", status_code=303)
 
@@ -115,34 +94,38 @@ def add_device(
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
     snmp_community: str = Form("public"),
-    snmp_port: str = Form("161"),
-    snmp_timeout_s: str = Form("1"),
-    snmp_retries: str = Form("1"),
+    snmp_port: int = Form(161),
+    snmp_timeout_s: int = Form(1),
+    snmp_retries: int = Form(1),
 ):
     cfg = load_config(CONFIG_PATH)
     cfg.setdefault("devices", [])
 
     ip = ip.strip()
-    driver = driver.strip()
-
     if not ip:
         return RedirectResponse("/", status_code=303)
 
-    # Anti-doublon sur IP
     if any(d.get("ip") == ip for d in cfg["devices"]):
         return RedirectResponse("/", status_code=303)
 
-    cfg["devices"].append(
-        {
-            "ip": ip,
-            "name": name.strip(),
-            "building": building.strip(),
-            "room": room.strip(),
-            "type": device_type.strip(),
-            "driver": driver,
-            "snmp": _snmp_block(driver, snmp_community, snmp_port, snmp_timeout_s, snmp_retries),
+    device = {
+        "ip": ip,
+        "name": name.strip(),
+        "building": building.strip(),
+        "room": room.strip(),
+        "type": device_type.strip(),
+        "driver": driver.strip(),
+    }
+
+    if driver.strip() == "snmp":
+        device["snmp"] = {
+            "community": snmp_community.strip() or "public",
+            "port": int(snmp_port),
+            "timeout_s": int(snmp_timeout_s),
+            "retries": int(snmp_retries),
         }
-    )
+
+    cfg["devices"].append(device)
     save_config(CONFIG_PATH, cfg)
     return RedirectResponse("/", status_code=303)
 
@@ -157,21 +140,18 @@ def update_device(
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
     snmp_community: str = Form("public"),
-    snmp_port: str = Form("161"),
-    snmp_timeout_s: str = Form("1"),
-    snmp_retries: str = Form("1"),
+    snmp_port: int = Form(161),
+    snmp_timeout_s: int = Form(1),
+    snmp_retries: int = Form(1),
 ):
     cfg = load_config(CONFIG_PATH)
     devices = cfg.get("devices", [])
 
     original_ip = original_ip.strip()
     ip = ip.strip()
-    driver = driver.strip()
-
     if not original_ip or not ip:
         return RedirectResponse("/", status_code=303)
 
-    # Si l'IP change, empêcher collision avec une autre entrée
     if ip != original_ip and any(d.get("ip") == ip for d in devices):
         return RedirectResponse("/", status_code=303)
 
@@ -182,8 +162,18 @@ def update_device(
             d["building"] = building.strip()
             d["room"] = room.strip()
             d["type"] = device_type.strip()
-            d["driver"] = driver
-            d["snmp"] = _snmp_block(driver, snmp_community, snmp_port, snmp_timeout_s, snmp_retries)
+            d["driver"] = driver.strip()
+
+            if driver.strip() == "snmp":
+                d["snmp"] = {
+                    "community": snmp_community.strip() or "public",
+                    "port": int(snmp_port),
+                    "timeout_s": int(snmp_timeout_s),
+                    "retries": int(snmp_retries),
+                }
+            else:
+                d["snmp"] = {}
+
             break
 
     cfg["devices"] = devices

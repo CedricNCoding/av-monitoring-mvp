@@ -1,3 +1,4 @@
+# agent/src/collector.py
 import os
 import time
 import subprocess
@@ -22,6 +23,8 @@ _last_send_at: Optional[str] = None
 _last_send_ok: Optional[bool] = None
 _last_send_error: Optional[str] = None
 
+_last_next_send_in_s: Optional[int] = None  # nouveau: pour l'UI
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -34,6 +37,7 @@ def get_last_status() -> Dict[str, Any]:
     - dernier payload
     - dernier envoi (OK/KO)
     - erreurs éventuelles
+    - prochain envoi prévu
     """
     with _state_lock:
         return {
@@ -43,6 +47,7 @@ def get_last_status() -> Dict[str, Any]:
             "last_send_at": _last_send_at,
             "last_send_ok": _last_send_ok,
             "last_send_error": _last_send_error,
+            "next_send_in_s": _last_next_send_in_s,
         }
 
 
@@ -59,21 +64,6 @@ def _ping(ip: str, timeout_s: int = 1) -> bool:
         return False
 
 
-def _base_device_fields(d: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Champs d'inventaire remontés dans le payload pour UX + backend.
-    (Ne casse pas le backend si celui-ci ignore des champs additionnels,
-    car le backend actuel stocke a minima ip/status/detail/metrics.)
-    """
-    return {
-        "name": (d.get("name") or "").strip(),
-        "building": (d.get("building") or "").strip(),
-        "room": (d.get("room") or "").strip(),
-        "device_type": (d.get("type") or d.get("device_type") or "unknown").strip(),
-        "driver": (d.get("driver") or "ping").strip(),
-    }
-
-
 def collect(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
 
@@ -84,19 +74,27 @@ def collect(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not ip:
             continue
 
-        base = _base_device_fields(d)
+        name = (d.get("name") or "").strip() or ip
+        building = (d.get("building") or "").strip()
+        room = (d.get("room") or "").strip()
+        dtype = (d.get("type") or d.get("device_type") or "unknown").strip() or "unknown"
 
         # --- Driver PING ---
         if driver == "ping":
             ok = _ping(ip, 1)
-            out.append({
-                "ip": ip,
-                "check": "ping",
-                **base,
-                "status": "online" if ok else "offline",
-                "detail": "ping_ok" if ok else "ping_failed",
-                "metrics": {}
-            })
+            out.append(
+                {
+                    "ip": ip,
+                    "name": name,
+                    "building": building,
+                    "room": room,
+                    "type": dtype,
+                    "driver": "ping",
+                    "status": "online" if ok else "offline",
+                    "detail": "ping_ok" if ok else "ping_failed",
+                    "metrics": {},
+                }
+            )
             continue
 
         # --- Driver SNMP avec fallback PING ---
@@ -104,48 +102,60 @@ def collect(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
             probe = snmp_probe(d)
 
             if probe.get("snmp_ok"):
-                # SNMP OK => ONLINE (même si ICMP peut être bloqué)
-                out.append({
-                    "ip": ip,
-                    "check": "snmp",
-                    **base,
-                    "status": "online",
-                    "detail": "snmp_ok",
-                    "metrics": {
-                        "snmp_ok": "true",
-                        "sys_descr": probe.get("sys_descr") or "",
-                        "sys_uptime": probe.get("sys_uptime") or "",
-                        "snmp_port": str(probe.get("snmp_port") or ""),
+                out.append(
+                    {
+                        "ip": ip,
+                        "name": name,
+                        "building": building,
+                        "room": room,
+                        "type": dtype,
+                        "driver": "snmp",
+                        "status": "online",
+                        "detail": "snmp_ok",
+                        "metrics": {
+                            "snmp_ok": "true",
+                            "sys_descr": probe.get("sys_descr") or "",
+                            "sys_uptime": probe.get("sys_uptime") or "",
+                            "snmp_port": str(probe.get("snmp_port") or ""),
+                        },
                     }
-                })
+                )
             else:
-                # SNMP KO => fallback ping
                 ping_ok = _ping(ip, 1)
-                out.append({
-                    "ip": ip,
-                    "check": "snmp+ping_fallback",
-                    **base,
-                    "status": "online" if ping_ok else "offline",
-                    "detail": "ping_ok_fallback" if ping_ok else "snmp_failed_and_ping_failed",
-                    "metrics": {
-                        "snmp_ok": "false",
-                        "snmp_error": (probe.get("snmp_error") or "")[:300],
-                        "sys_descr": probe.get("sys_descr") or "",
-                        "snmp_port": str(probe.get("snmp_port") or ""),
+                out.append(
+                    {
+                        "ip": ip,
+                        "name": name,
+                        "building": building,
+                        "room": room,
+                        "type": dtype,
+                        "driver": "snmp",
+                        "status": "online" if ping_ok else "offline",
+                        "detail": "ping_ok_fallback" if ping_ok else "snmp_failed_and_ping_failed",
+                        "metrics": {
+                            "snmp_ok": "false",
+                            "snmp_error": (probe.get("snmp_error") or "")[:300],
+                            "sys_descr": probe.get("sys_descr") or "",
+                            "snmp_port": str(probe.get("snmp_port") or ""),
+                        },
                     }
-                })
-
+                )
             continue
 
         # --- Driver inconnu ---
-        out.append({
-            "ip": ip,
-            "check": "unknown",
-            **base,
-            "status": "unknown",
-            "detail": f"driver_not_implemented:{driver}",
-            "metrics": {}
-        })
+        out.append(
+            {
+                "ip": ip,
+                "name": name,
+                "building": building,
+                "room": room,
+                "type": dtype,
+                "driver": driver,
+                "status": "unknown",
+                "detail": f"driver_not_implemented:{driver}",
+                "metrics": {},
+            }
+        )
 
     return out
 
@@ -165,13 +175,34 @@ def send(cfg: Dict[str, Any], devices_payload: List[Dict[str, Any]]) -> None:
     r.raise_for_status()
 
 
+def _next_interval_s(cfg: Dict[str, Any], devices_payload: List[Dict[str, Any]]) -> int:
+    reporting = cfg.get("reporting") or {}
+    if not isinstance(reporting, dict):
+        reporting = {}
+
+    ok_interval = int(reporting.get("ok_interval_s") or 3600)
+    ko_interval = int(reporting.get("ko_interval_s") or 60)
+
+    # garde-fous
+    ok_interval = max(60, ok_interval)   # min 60s
+    ko_interval = max(15, ko_interval)   # min 15s
+
+    any_bad = any((d.get("status") or "") != "online" for d in (devices_payload or []))
+    return ko_interval if any_bad else ok_interval
+
+
 def run_forever(stop_flag: dict, interval_s: int = 10) -> None:
     """
     Boucle principale.
-    Mise à jour de l'état partagé après chaque collecte / envoi pour affichage UI.
+    - Collecte
+    - Envoi
+    - Interval adaptatif:
+        * tout OK => ok_interval_s (par défaut 3600s)
+        * au moins un KO => ko_interval_s (par défaut 60s)
     """
     global _last_run_at, _last_payload, _last_collect_error
     global _last_send_at, _last_send_ok, _last_send_error
+    global _last_next_send_in_s
 
     while not stop_flag.get("stop", True):
         cfg = load_config(CONFIG_PATH)
@@ -189,7 +220,7 @@ def run_forever(stop_flag: dict, interval_s: int = 10) -> None:
                 _last_payload = None
                 _last_collect_error = str(e)
             print(f"[collector] collect failed: {e}", flush=True)
-            time.sleep(interval_s)
+            time.sleep(60)
             continue
 
         # 2) Envoi
@@ -207,4 +238,10 @@ def run_forever(stop_flag: dict, interval_s: int = 10) -> None:
                 _last_send_error = str(e)
             print(f"[collector] send failed: {e}", flush=True)
 
-        time.sleep(interval_s)
+        # 3) Interval adaptatif
+        sleep_s = _next_interval_s(cfg, devices)
+        with _state_lock:
+            _last_next_send_in_s = sleep_s
+        print(f"[collector] next send in {sleep_s}s", flush=True)
+
+        time.sleep(sleep_s)
