@@ -7,9 +7,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "site_name": "site-demo",
     "site_token": "change-me",
     "api_url": "http://backend:8000/ingest",
+    # Collecte / reporting (cadence)
+    # - ok_interval_s : si tout est OK, on collecte moins souvent
+    # - ko_interval_s : si au moins un équipement est KO, on collecte plus souvent
     "reporting": {
-        "ok_interval_s": 3600,
-        "ko_interval_s": 60,
+        "ok_interval_s": 300,   # 5 minutes
+        "ko_interval_s": 60,    # 1 minute
     },
     "devices": [
         {
@@ -52,7 +55,9 @@ def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg["reporting"].setdefault("ok_interval_s", DEFAULT_CONFIG["reporting"]["ok_interval_s"])
     cfg["reporting"].setdefault("ko_interval_s", DEFAULT_CONFIG["reporting"]["ko_interval_s"])
 
-    # garde-fous (évite 0 / négatifs / trop bas)
+    # garde-fous
+    # - ok_interval : au minimum 60s (évite de spammer inutilement)
+    # - ko_interval : au minimum 15s (mais vous visez 60s)
     try:
         cfg["reporting"]["ok_interval_s"] = max(60, int(cfg["reporting"]["ok_interval_s"]))
     except Exception:
@@ -107,6 +112,7 @@ def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 def load_config(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
+        # deep copy minimal (évite mutations du DEFAULT_CONFIG)
         return _normalize_config(json.loads(json.dumps(DEFAULT_CONFIG)))
 
     with open(path, "r", encoding="utf-8") as f:
