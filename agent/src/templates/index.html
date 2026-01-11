@@ -7,11 +7,21 @@
     body { font-family: Arial, sans-serif; margin: 24px; }
     input, select { padding: 6px; margin: 4px; }
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    td, th { border: 1px solid #ddd; padding: 8px; }
-    .row { display:flex; gap:24px; align-items:flex-start; }
-    .card { border:1px solid #ddd; padding:16px; border-radius:8px; flex:1; }
+    td, th { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    .row { display:flex; gap:24px; align-items:flex-start; flex-wrap: wrap; }
+    .card { border:1px solid #ddd; padding:16px; border-radius:8px; flex:1; min-width: 320px; }
     button { padding: 6px 10px; margin-top: 8px; }
     code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
+    .muted { color:#666; font-size: 12px; }
+    .danger { color:#b00020; }
+    .ok { color:#1b5e20; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; }
+    .grid { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .sep { height: 1px; background:#eee; margin: 12px 0; }
+    .w-120 { width:120px; }
+    .w-140 { width:140px; }
+    .w-160 { width:160px; }
+    .w-200 { width:200px; }
   </style>
 </head>
 <body>
@@ -26,7 +36,7 @@
         <div>Site Token: <input name="site_token" size="40" value="{{ cfg.site_token }}"></div>
         <button type="submit">Enregistrer</button>
       </form>
-      <p>
+      <p class="muted">
         Exemple : <code>https://api.votre-saas.com/ingest</code>
       </p>
     </div>
@@ -34,77 +44,132 @@
     <div class="card">
       <h2>Collecte</h2>
       <p>Statut: <b>{{ "RUNNING" if running else "STOPPED" }}</b></p>
-      <form method="post" action="/collector/start"><button type="submit">Start</button></form>
-      <form method="post" action="/collector/stop"><button type="submit">Stop</button></form>
-      <p style="margin-top:10px;">
+      <div class="grid">
+        <form method="post" action="/collector/start"><button type="submit">Start</button></form>
+        <form method="post" action="/collector/stop"><button type="submit">Stop</button></form>
+      </div>
+      <p class="muted" style="margin-top:10px;">
         Les envois se font toutes les 10s (MVP).
       </p>
     </div>
 
-  <div class="card" style="margin-top:16px;">
+    <div class="card">
       <h2>Dernier relevé</h2>
 
-    <p><b>Dernière collecte (UTC)</b> : {{ last_status.last_run_at or "—" }}</p>
-    {% if last_status.last_collect_error %}
-      <p style="color:#b00020;"><b>Erreur collecte</b> : {{ last_status.last_collect_error }}</p>
-    {% endif %}
+      <p><b>Dernière collecte (UTC)</b> : {{ last_status.last_run_at or "—" }}</p>
+      {% if last_status.last_collect_error %}
+        <p class="danger"><b>Erreur collecte</b> : {{ last_status.last_collect_error }}</p>
+      {% endif %}
 
-    <p><b>Dernier envoi (UTC)</b> : {{ last_status.last_send_at or "—" }}</p>
-    <p><b>Envoi</b> :
-      {% if last_status.last_send_ok is none %}
-      —
-     {% elif last_status.last_send_ok %}
-       OK
-     {% else %}
-       KO
-     {% endif %}
-    </p>
-    {% if last_status.last_send_error %}
-     <p style="color:#b00020;"><b>Erreur envoi</b> : {{ last_status.last_send_error }}</p>
-    {% endif %}
+      <p><b>Dernier envoi (UTC)</b> : {{ last_status.last_send_at or "—" }}</p>
+      <p><b>Envoi</b> :
+        {% if last_status.last_send_ok is none %}
+          —
+        {% elif last_status.last_send_ok %}
+          <span class="ok">OK</span>
+        {% else %}
+          <span class="danger">KO</span>
+        {% endif %}
+      </p>
+      {% if last_status.last_send_error %}
+        <p class="danger"><b>Erreur envoi</b> : {{ last_status.last_send_error }}</p>
+      {% endif %}
 
-  <h3 style="margin-top:12px;">Détail dernier payload</h3>
-  {% if last_status.last_payload %}
-    <table>
-      <tr><th>IP</th><th>Status</th><th>Détail</th><th>Nature (driver)</th></tr>
-      {% for d in last_status.last_payload %}
-      <tr>
-        <td>{{ d.ip }}</td>
-        <td>{{ d.status }}</td>
-        <td>{{ d.detail or "" }}</td>
-        <td>{{ "ping" if d.detail and "ping" in d.detail else "—" }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <p>—</p>
-  {% endif %}
-  </div>
-
+      <h3 style="margin-top:12px;">Détail dernier payload</h3>
+      {% if last_status.last_payload %}
+        <table>
+          <tr><th>IP</th><th>Status</th><th>Détail</th><th>Nature</th></tr>
+          {% for d in last_status.last_payload %}
+          <tr>
+            <td>{{ d.ip }}</td>
+            <td>{{ d.status }}</td>
+            <td>{{ d.detail or "" }}</td>
+            <td>{{ d.check or d.driver or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <p>—</p>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card" style="margin-top:16px;">
     <h2>Équipements surveillés</h2>
 
+    <h3>Ajouter</h3>
     <form method="post" action="/devices/add">
-      IP: <input name="ip" placeholder="192.168.1.10" required>
-      Type: <input name="device_type" placeholder="projecteur / écran">
-      Driver:
-      <select name="driver">
-        <option value="ping">ping</option>
-        <option value="snmp">snmp (bientôt)</option>
-      </select>
-      <button type="submit">Ajouter</button>
+      <div class="grid">
+        <span>IP:</span> <input name="ip" class="w-140" placeholder="192.168.1.10" required>
+        <span>Nom:</span> <input name="name" class="w-200" placeholder="Écran Salle 201">
+        <span>Bâtiment:</span> <input name="building" class="w-120" placeholder="Bât A">
+        <span>Salle:</span> <input name="room" class="w-120" placeholder="201">
+        <span>Type:</span> <input name="device_type" class="w-160" placeholder="display / proj / dsp">
+
+        <span>Driver:</span>
+        <select name="driver">
+          <option value="ping">ping</option>
+          <option value="snmp">snmp</option>
+        </select>
+
+        <span class="pill">SNMP</span>
+        <span>Community:</span> <input name="snmp_community" class="w-120" placeholder="public" value="public">
+        <span>Port:</span> <input name="snmp_port" class="w-120" placeholder="161" value="161">
+        <span>Timeout(s):</span> <input name="snmp_timeout_s" class="w-120" placeholder="1" value="1">
+        <span>Retries:</span> <input name="snmp_retries" class="w-120" placeholder="1" value="1">
+
+        <button type="submit">Ajouter</button>
+      </div>
+
+      <p class="muted">
+        Pour un équipement SNMP, mettez <b>Driver=snmp</b> et renseignez la community. Pour ping uniquement, laissez Driver=ping.
+      </p>
     </form>
 
+    <div class="sep"></div>
+
+    <h3>Modifier</h3>
+    <p class="muted">
+      Chaque ligne est éditable. Cliquez sur <b>Enregistrer</b> pour appliquer la modification.
+      L’IP sert d’identifiant : si vous changez l’IP, l’ancienne est utilisée pour retrouver l’entrée.
+    </p>
+
     <table>
-      <tr><th>IP</th><th>Type</th><th>Driver</th><th>Action</th></tr>
+      <tr>
+        <th>Édition</th>
+        <th>Actions</th>
+      </tr>
+
       {% for d in cfg.devices %}
       <tr>
-        <td>{{ d.ip }}</td>
-        <td>{{ d.type }}</td>
-        <td>{{ d.driver }}</td>
         <td>
+          <form method="post" action="/devices/update" class="grid">
+            <input type="hidden" name="original_ip" value="{{ d.ip }}">
+
+            <span>IP:</span> <input name="ip" class="w-140" value="{{ d.ip }}">
+            <span>Nom:</span> <input name="name" class="w-200" value="{{ d.name or '' }}">
+            <span>Bâtiment:</span> <input name="building" class="w-120" value="{{ d.building or '' }}">
+            <span>Salle:</span> <input name="room" class="w-120" value="{{ d.room or '' }}">
+            <span>Type:</span> <input name="device_type" class="w-160" value="{{ d.type or '' }}">
+
+            <span>Driver:</span>
+            <select name="driver">
+              <option value="ping" {% if (d.driver or 'ping') == 'ping' %}selected{% endif %}>ping</option>
+              <option value="snmp" {% if (d.driver or '') == 'snmp' %}selected{% endif %}>snmp</option>
+            </select>
+
+            {% set sn = d.snmp if d.snmp is defined else {} %}
+            <span class="pill">SNMP</span>
+            <span>Community:</span> <input name="snmp_community" class="w-120" value="{{ (sn.community if sn and sn.community is defined else (sn['community'] if sn and 'community' in sn else 'public')) }}">
+            <span>Port:</span> <input name="snmp_port" class="w-120" value="{{ (sn.port if sn and sn.port is defined else (sn['port'] if sn and 'port' in sn else 161)) }}">
+            <span>Timeout(s):</span> <input name="snmp_timeout_s" class="w-120" value="{{ (sn.timeout_s if sn and sn.timeout_s is defined else (sn['timeout_s'] if sn and 'timeout_s' in sn else 1)) }}">
+            <span>Retries:</span> <input name="snmp_retries" class="w-120" value="{{ (sn.retries if sn and sn.retries is defined else (sn['retries'] if sn and 'retries' in sn else 1)) }}">
+
+            <button type="submit">Enregistrer</button>
+          </form>
+        </td>
+
+        <td style="white-space:nowrap;">
           <form method="post" action="/devices/delete" style="display:inline;">
             <input type="hidden" name="ip" value="{{ d.ip }}">
             <button type="submit">Supprimer</button>

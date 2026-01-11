@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Dict, Any, List, Optional
 
 from src.storage import load_config
+from src.drivers.snmp import snmp_probe
 
 CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
 
@@ -58,12 +59,24 @@ def _ping(ip: str, timeout_s: int = 1) -> bool:
         return False
 
 
+def _base_device_fields(d: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Champs d'inventaire remontés dans le payload pour UX + backend.
+    (Ne casse pas le backend si celui-ci ignore des champs additionnels,
+    car le backend actuel stocke a minima ip/status/detail/metrics.)
+    """
+    return {
+        "name": (d.get("name") or "").strip(),
+        "building": (d.get("building") or "").strip(),
+        "room": (d.get("room") or "").strip(),
+        "device_type": (d.get("type") or d.get("device_type") or "unknown").strip(),
+        "driver": (d.get("driver") or "ping").strip(),
+    }
+
+
 def collect(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Construit le payload "devices" envoyé au backend.
-    Ajout : champ 'check' (nature du test), ex. 'ping'
-    """
     out: List[Dict[str, Any]] = []
+
     for d in cfg.get("devices", []):
         ip = (d.get("ip") or "").strip()
         driver = (d.get("driver") or "ping").strip()
@@ -71,23 +84,68 @@ def collect(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not ip:
             continue
 
+        base = _base_device_fields(d)
+
+        # --- Driver PING ---
         if driver == "ping":
             ok = _ping(ip, 1)
             out.append({
                 "ip": ip,
-                "check": "ping",  # nature du test
+                "check": "ping",
+                **base,
                 "status": "online" if ok else "offline",
                 "detail": "ping_ok" if ok else "ping_failed",
                 "metrics": {}
             })
-        else:
-            out.append({
-                "ip": ip,
-                "check": driver,  # nature du test (driver)
-                "status": "unknown",
-                "detail": f"driver_not_implemented:{driver}",
-                "metrics": {}
-            })
+            continue
+
+        # --- Driver SNMP avec fallback PING ---
+        if driver == "snmp":
+            probe = snmp_probe(d)
+
+            if probe.get("snmp_ok"):
+                # SNMP OK => ONLINE (même si ICMP peut être bloqué)
+                out.append({
+                    "ip": ip,
+                    "check": "snmp",
+                    **base,
+                    "status": "online",
+                    "detail": "snmp_ok",
+                    "metrics": {
+                        "snmp_ok": "true",
+                        "sys_descr": probe.get("sys_descr") or "",
+                        "sys_uptime": probe.get("sys_uptime") or "",
+                        "snmp_port": str(probe.get("snmp_port") or ""),
+                    }
+                })
+            else:
+                # SNMP KO => fallback ping
+                ping_ok = _ping(ip, 1)
+                out.append({
+                    "ip": ip,
+                    "check": "snmp+ping_fallback",
+                    **base,
+                    "status": "online" if ping_ok else "offline",
+                    "detail": "ping_ok_fallback" if ping_ok else "snmp_failed_and_ping_failed",
+                    "metrics": {
+                        "snmp_ok": "false",
+                        "snmp_error": (probe.get("snmp_error") or "")[:300],
+                        "sys_descr": probe.get("sys_descr") or "",
+                        "snmp_port": str(probe.get("snmp_port") or ""),
+                    }
+                })
+
+            continue
+
+        # --- Driver inconnu ---
+        out.append({
+            "ip": ip,
+            "check": "unknown",
+            **base,
+            "status": "unknown",
+            "detail": f"driver_not_implemented:{driver}",
+            "metrics": {}
+        })
 
     return out
 
