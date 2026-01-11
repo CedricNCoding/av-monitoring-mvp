@@ -1,167 +1,182 @@
-<!-- agent/src/templates/index.html -->
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Agent AV - Admin locale</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent AV - Administration locale</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    input, select { padding: 6px; margin: 4px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    td, th { border: 1px solid #ddd; padding: 8px; }
-    .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
-    .card { border:1px solid #ddd; padding:16px; border-radius:8px; flex:1; min-width:320px; }
-    button { padding: 6px 10px; margin-top: 8px; }
-    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
-    .muted { color:#666; font-size:12px; }
+    :root {
+      --primary: #2563eb;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding: 24px; line-height: 1.4; }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: var(--text-main); }
+    h2 { font-size: 18px; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; align-items: stretch; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    
+    /* Formulaires */
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+    input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+    input:focus { border-color: var(--primary); outline: none; }
+    
+    button { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    button:hover { opacity: 0.9; }
+    button.secondary { background: #64748b; }
+    button.danger { background: var(--danger); }
+    
+    /* Status & Table */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+    .badge.running { background: #dcfce7; color: #166534; }
+    .badge.stopped { background: #fee2e2; color: #991b1b; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+    th { text-align: left; background: #f8fafc; padding: 10px; border-bottom: 2px solid var(--border); color: var(--text-muted); }
+    td { padding: 10px; border-bottom: 1px solid var(--border); }
+    
+    code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; color: var(--primary); font-size: 0.9em; }
+    .muted { color: var(--text-muted); font-size: 12px; }
+    
+    .collector-ctrl { display: flex; gap: 8px; margin-top: 12px; }
   </style>
 </head>
 <body>
+
   <h1>Agent AV — Administration locale</h1>
 
   <div class="row">
     <div class="card">
-      <h2>Paramètres</h2>
+      <h2>⚙️ Paramètres de l'agent</h2>
       <form method="post" action="/settings">
-        <div>API URL: <input name="api_url" size="50" value="{{ cfg.api_url }}"></div>
-        <div>Site Name: <input name="site_name" value="{{ cfg.site_name }}"></div>
-        <div>Site Token: <input name="site_token" size="40" value="{{ cfg.site_token }}"></div>
-
-        <h3 style="margin:12px 0 6px 0;">Fréquence d’envoi</h3>
-        <div class="muted">Objectif : limiter la charge quand tout est OK, accélérer en cas de KO.</div>
-        <div>
-          Si tout est OK (secondes):
-          <input type="number" name="ok_interval_s" min="60"
-                 value="{{ (cfg.reporting.ok_interval_s if cfg.reporting else 3600) }}">
-          <span class="muted">(3600 = 1h)</span>
+        <div class="form-group">
+          <label>URL d'Ingestion API</label>
+          <input name="api_url" value="{{ cfg.api_url }}" placeholder="http://server-ip:8000/ingest">
         </div>
-        <div>
-          Si au moins 1 KO (secondes):
-          <input type="number" name="ko_interval_s" min="15"
-                 value="{{ (cfg.reporting.ko_interval_s if cfg.reporting else 60) }}">
-          <span class="muted">(60 = 1min)</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label>Nom du Site</label>
+            <input name="site_name" value="{{ cfg.site_name }}">
+          </div>
+          <div class="form-group">
+            <label>Site Token</label>
+            <input name="site_token" type="password" value="{{ cfg.site_token }}">
+          </div>
         </div>
 
-        <button type="submit">Enregistrer</button>
+        <h3 style="font-size: 14px; margin: 16px 0 8px 0;">Fréquence du reporting</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label>Si OK (sec)</label>
+            <input type="number" name="ok_interval_s" min="60" value="{{ cfg.reporting.ok_interval_s or 3600 }}">
+          </div>
+          <div class="form-group">
+            <label>Si Erreur (sec)</label>
+            <input type="number" name="ko_interval_s" min="15" value="{{ cfg.reporting.ko_interval_s or 60 }}">
+          </div>
+        </div>
+        <button type="submit">Appliquer les réglages</button>
       </form>
-      <p class="muted">
-        Exemple : <code>http://192.168.1.237:8000/ingest</code>
-      </p>
     </div>
 
     <div class="card">
-      <h2>Collecte</h2>
-      <p>Statut: <b>{{ "RUNNING" if running else "STOPPED" }}</b></p>
-      <form method="post" action="/collector/start"><button type="submit">Start</button></form>
-      <form method="post" action="/collector/stop"><button type="submit">Stop</button></form>
-
-      <p style="margin-top:10px;">
-        Prochain envoi : <b>
-          {% if last_status.next_send_in_s %}
-            dans {{ last_status.next_send_in_s }}s
-          {% else %}
-            —
-          {% endif %}
-        </b>
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>Dernier relevé</h2>
-
-      <p><b>Dernière collecte (UTC)</b> : {{ last_status.last_run_at or "—" }}</p>
-      {% if last_status.last_collect_error %}
-        <p style="color:#b00020;"><b>Erreur collecte</b> : {{ last_status.last_collect_error }}</p>
-      {% endif %}
-
-      <p><b>Dernier envoi (UTC)</b> : {{ last_status.last_send_at or "—" }}</p>
-      <p><b>Envoi</b> :
-        {% if last_status.last_send_ok is none %}
-          —
-        {% elif last_status.last_send_ok %}
-          OK
-        {% else %}
-          KO
-        {% endif %}
-      </p>
-      {% if last_status.last_send_error %}
-        <p style="color:#b00020;"><b>Erreur envoi</b> : {{ last_status.last_send_error }}</p>
-      {% endif %}
-
-      <h3 style="margin-top:12px;">Détail dernier payload</h3>
-      {% if last_status.last_payload %}
-        <table>
-          <tr><th>Nom</th><th>IP</th><th>Bâtiment</th><th>Salle</th><th>Status</th><th>Détail</th><th>Driver</th></tr>
-          {% for d in last_status.last_payload %}
-          <tr>
-            <td>{{ d.name }}</td>
-            <td>{{ d.ip }}</td>
-            <td>{{ d.building or "—" }}</td>
-            <td>{{ d.room or "—" }}</td>
-            <td>{{ d.status }}</td>
-            <td>{{ d.detail or "" }}</td>
-            <td>{{ d.driver or "—" }}</td>
-          </tr>
-          {% endfor %}
-        </table>
-      {% else %}
-        <p>—</p>
-      {% endif %}
+      <h2>📡 État de la collecte</h2>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+        <span>Statut actuel : 
+          <span class="badge {{ 'running' if running else 'stopped' }}">
+            {{ "COURS..." if running else "ARRÊTÉ" }}
+          </span>
+        </span>
+        <div class="collector-ctrl">
+          <form method="post" action="/collector/{{ 'stop' if running else 'start' }}">
+            <button type="submit" class="{{ 'danger' if running else 'success' }}">
+              {{ "Arrêter" if running else "Démarrer" }}
+            </button>
+          </form>
+        </div>
+      </div>
+      
+      <div style="border-top: 1px solid var(--border); padding-top: 15px;">
+        <div class="muted">Prochain cycle : <b>{{ last_status.next_send_in_s or '—' }}s</b></div>
+        <div class="muted">Dernière collecte : {{ last_status.last_run_at or '—' }}</div>
+        <div class="muted">Dernier envoi API : 
+          <span style="color: {{ 'var(--success)' if last_status.last_send_ok else 'var(--danger)' }}">
+            {{ "Succès" if last_status.last_send_ok else "Erreur" if last_status.last_send_ok == False else "—" }}
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
-    <h2>Équipements surveillés</h2>
-
-    <form method="post" action="/devices/add">
-      <div>
-        IP: <input name="ip" placeholder="192.168.1.10" required>
-        Nom: <input name="name" placeholder="Projecteur salle 12">
+  <div class="card" style="margin-top: 20px;">
+    <h2>🖥️ Inventaire des équipements locaux</h2>
+    
+    <form method="post" action="/devices/add" style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+        <div class="form-group"><label>IP</label><input name="ip" placeholder="192.168.1.X" required></div>
+        <div class="form-group"><label>Nom</label><input name="name"></div>
+        <div class="form-group"><label>Bâtiment</label><input name="building"></div>
+        <div class="form-group"><label>Salle</label><input name="room"></div>
+        <div class="form-group">
+          <label>Driver</label>
+          <select name="driver">
+            <option value="ping">ping</option>
+            <option value="snmp">snmp</option>
+          </select>
+        </div>
       </div>
-      <div>
-        Bâtiment: <input name="building" placeholder="Bât. A">
-        Salle: <input name="room" placeholder="Salle 12">
+      
+      <div id="snmp-fields" style="display:none; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div class="form-group"><label>Community</label><input name="snmp_community" value="public"></div>
+        <div class="form-group"><label>Port</label><input type="number" name="snmp_port" value="161"></div>
+        <div class="form-group"><label>Timeout</label><input type="number" name="snmp_timeout_s" value="1"></div>
+        <div class="form-group"><label>Retries</label><input type="number" name="snmp_retries" value="1"></div>
       </div>
-      <div>
-        Type: <input name="device_type" placeholder="projecteur / écran">
-        Driver:
-        <select name="driver">
-          <option value="ping">ping</option>
-          <option value="snmp">snmp</option>
-        </select>
-      </div>
-
-      <fieldset style="margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:8px;">
-        <legend class="muted">SNMP (si driver=snmp)</legend>
-        Community: <input name="snmp_community" value="public">
-        Port: <input type="number" name="snmp_port" value="161" min="1" max="65535">
-        Timeout (s): <input type="number" name="snmp_timeout_s" value="1" min="1" max="10">
-        Retries: <input type="number" name="snmp_retries" value="1" min="0" max="5">
-      </fieldset>
-
-      <button type="submit">Ajouter</button>
+      <button type="submit" style="margin-top: 10px;">+ Ajouter l'équipement</button>
     </form>
 
-    <table>
-      <tr><th>Nom</th><th>IP</th><th>Bâtiment</th><th>Salle</th><th>Type</th><th>Driver</th><th>Action</th></tr>
-      {% for d in cfg.devices %}
-      <tr>
-        <td>{{ d.name or "—" }}</td>
-        <td>{{ d.ip }}</td>
-        <td>{{ d.building or "—" }}</td>
-        <td>{{ d.room or "—" }}</td>
-        <td>{{ d.type }}</td>
-        <td>{{ d.driver }}</td>
-        <td>
-          <form method="post" action="/devices/delete" style="display:inline;">
-            <input type="hidden" name="ip" value="{{ d.ip }}">
-            <button type="submit">Supprimer</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </table>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Équipement</th><th>IP</th><th>Emplacement</th><th>Type</th><th>Driver</th><th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in cfg.devices %}
+          <tr>
+            <td><strong>{{ d.name or 'Sans nom' }}</strong></td>
+            <td><code>{{ d.ip }}</code></td>
+            <td class="muted">{{ d.building or '—' }} / {{ d.room or '—' }}</td>
+            <td>{{ d.type }}</td>
+            <td><span class="badge" style="background:#f1f5f9;">{{ d.driver }}</span></td>
+            <td style="text-align:right;">
+              <form method="post" action="/devices/delete">
+                <input type="hidden" name="ip" value="{{ d.ip }}">
+                <button type="submit" class="danger" style="padding: 4px 8px; font-size: 11px;">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+
+  <script>
+    // Petit script pour afficher les champs SNMP seulement si nécessaire
+    document.querySelector('select[name="driver"]').addEventListener('change', function(e) {
+      document.getElementById('snmp-fields').style.display = e.target.value === 'snmp' ? 'grid' : 'none';
+    });
+  </script>
 
 </body>
 </html>
