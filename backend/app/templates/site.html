@@ -5,72 +5,162 @@
   <title>AV Monitoring — Sites</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; }
-    .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
-    .card { border:1px solid #ddd; border-radius:8px; padding:16px; flex:1; min-width:320px; }
-    input { padding: 6px; margin: 4px 0; width: 100%; box-sizing:border-box; }
-    button { padding: 8px 12px; margin-top: 8px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background:#fafafa; text-align:left; }
-    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
+    h1 { margin-bottom: 4px; }
     .muted { color:#666; font-size: 12px; }
-    .ok { color:#1b5e20; font-weight:700; }
-    .warn { color:#b26a00; font-weight:700; }
+
+    .row {
+      display:flex;
+      gap:16px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+      margin-top: 16px;
+    }
+
+    .card {
+      border:1px solid #ddd;
+      border-radius:8px;
+      padding:16px;
+      flex:1;
+      min-width:320px;
+    }
+
+    input {
+      padding: 6px;
+      margin: 6px 0;
+      width: 100%;
+      box-sizing:border-box;
+    }
+
+    button {
+      padding: 8px 12px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 12px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    th {
+      background:#fafafa;
+      text-align:left;
+    }
+
+    code {
+      background:#f4f4f4;
+      padding:2px 6px;
+      border-radius:4px;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .ok {
+      color:#1b5e20;
+      font-weight:700;
+    }
+
+    .warn {
+      color:#b26a00;
+      font-weight:700;
+    }
+
+    a {
+      text-decoration:none;
+    }
+
+    a:hover {
+      text-decoration:underline;
+    }
   </style>
 </head>
 <body>
+
   <h1>Sites</h1>
-  <p class="muted">Création de sites + génération automatique de token. Conservez le token (secret).</p>
+  <p class="muted">
+    Administration des sites (agents).  
+    Chaque site correspond à un agent (ou groupe d’agents) authentifié par un token.
+  </p>
 
   <div class="row">
+
+    <!-- Création d’un site -->
     <div class="card">
       <h2>Créer un site</h2>
 
       {% if created %}
-        <p class="ok">Site créé.</p>
+        {% if created.already %}
+          <p class="warn">Ce site existait déjà. Token actuel :</p>
+        {% else %}
+          <p class="ok">Site créé avec succès.</p>
+        {% endif %}
+
         <p>
           <b>Site ID</b> : <code>{{ created.site_id }}</code><br>
           <b>Nom</b> : <code>{{ created.site }}</code><br>
           <b>Token</b> : <code>{{ created.token }}</code>
         </p>
-        <p class="muted">Copiez ce token dans l’agent (UI locale agent).</p>
+
+        <p class="muted">
+          👉 Copiez ce token dans l’agent (UI locale agent ou fichier config).
+        </p>
       {% elif error %}
-        <p class="warn"><b>Erreur</b> : {{ error }}</p>
+        <p class="warn">Erreur : {{ error }}</p>
       {% endif %}
 
       <form method="post" action="/ui/sites/create">
-        <label>Nom du site</label>
-        <input name="name" placeholder="ex: site-paris" required>
-        <button type="submit">Créer + Générer token</button>
+        <label class="muted">Nom du site</label>
+        <input name="name" placeholder="ex : site-paris" required>
+        <button type="submit">Créer + générer token</button>
       </form>
 
       <p class="muted" style="margin-top:10px;">
-        Astuce : si le site existe déjà, vous le verrez dans la liste ci-dessous.
+        ⚠️ En production, les tokens ne devraient pas être affichés en clair.
       </p>
     </div>
 
+    <!-- Liste des sites existants -->
     <div class="card">
       <h2>Sites existants</h2>
 
       <table>
-        <tr><th>ID</th><th>Nom</th><th>Token</th></tr>
+        <tr>
+          <th>ID</th>
+          <th>Nom</th>
+          <th>Token</th>
+          <th>Accès</th>
+        </tr>
         {% for s in sites %}
         <tr>
           <td><code>{{ s.id }}</code></td>
           <td><code>{{ s.name }}</code></td>
           <td><code>{{ s.token }}</code></td>
+          <td>
+            <a href="/ui/agents/{{ s.id }}/devices">Devices</a>
+          </td>
         </tr>
         {% endfor %}
       </table>
 
       <p class="muted" style="margin-top:10px;">
-        Note : en production, on ne devrait pas afficher le token en clair. Pour MVP interne, c’est acceptable.
+        Astuce : cliquez sur “Devices” pour voir l’inventaire par bâtiment / salle.
       </p>
     </div>
+
   </div>
 
-  <p class="muted" style="margin-top:16px;">
-    Navigation : <a href="/ui/agents">UI Agents</a>
+  <p class="muted" style="margin-top:20px;">
+    Navigation :
+    <a href="/ui/agents">Agents</a> |
+    <a href="/ui/sites">Sites</a>
   </p>
+
 </body>
 </html>
