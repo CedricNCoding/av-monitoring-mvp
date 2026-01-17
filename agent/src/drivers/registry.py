@@ -1,62 +1,68 @@
 # agent/src/drivers/registry.py
-from typing import Any, Dict
+from __future__ import annotations
 
-from src.drivers.ping import ping
-from src.drivers.pjlink import probe as pjlink_probe
-from src.drivers.snmp import snmp_probe
+from typing import Any, Dict, Callable, Optional
+
+# Import drivers
+from src.drivers.ping import check_ping
+from src.drivers.snmp import check_snmp
+from src.drivers.pjlink import check_pjlink
 
 
-def probe_device(device: Dict[str, Any]) -> Dict[str, Any]:
+DriverFn = Callable[[Dict[str, Any]], Dict[str, Any]]
+
+
+_DRIVERS: Dict[str, DriverFn] = {
+    "ping": check_ping,
+    "snmp": check_snmp,
+    "pjlink": check_pjlink,
+}
+
+
+def run_driver(driver: str, device: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Retourne toujours:
-      { status, detail, metrics }
-    """
-    driver = (device.get("driver") or "ping").strip().lower()
-    ip = (device.get("ip") or "").strip()
+    API stable attendue par collector.py
 
-    # Driver PING
-    if driver == "ping":
-        ok = ping(ip, 1)
+    Retourne un dict normalisé au minimum:
+    {
+      "status": "online|offline|unknown",
+      "detail": "...",
+      "metrics": {...}
+    }
+    """
+    drv = (driver or device.get("driver") or "ping").strip().lower()
+    fn = _DRIVERS.get(drv)
+
+    if fn is None:
         return {
-            "status": "online" if ok else "offline",
-            "detail": "ping_ok" if ok else "ping_failed",
+            "status": "unknown",
+            "detail": f"unknown_driver:{drv}",
             "metrics": {},
         }
 
-    # Driver SNMP
-    if driver == "snmp":
-        probe = snmp_probe(device)
-        if probe.get("snmp_ok"):
-            return {
-                "status": "online",
-                "detail": "snmp_ok",
-                "metrics": {
-                    "snmp_ok": "true",
-                    "sys_descr": probe.get("sys_descr") or "",
-                    "sys_uptime": probe.get("sys_uptime") or "",
-                    "snmp_port": str(probe.get("snmp_port") or ""),
-                },
-            }
+    try:
+        out = fn(device)
+        if not isinstance(out, dict):
+            return {"status": "unknown", "detail": f"{drv}_bad_result", "metrics": {}}
 
-        # fallback ping
-        ping_ok = ping(ip, 1)
+        # Normalisation minimale
+        status = (out.get("status") or "unknown").strip().lower()
+        detail = (out.get("detail") or "").strip() or None
+        metrics = out.get("metrics") if isinstance(out.get("metrics"), dict) else {}
+
         return {
-            "status": "online" if ping_ok else "offline",
-            "detail": "ping_ok_fallback" if ping_ok else "snmp_failed_and_ping_failed",
-            "metrics": {
-                "snmp_ok": "false",
-                "snmp_error": (probe.get("snmp_error") or "")[:300],
-                "sys_descr": probe.get("sys_descr") or "",
-                "snmp_port": str(probe.get("snmp_port") or ""),
-            },
+            "status": status,
+            "detail": detail,
+            "metrics": metrics,
+        }
+    except Exception as e:
+        return {
+            "status": "offline",
+            "detail": f"{drv}_error:{e.__class__.__name__}",
+            "metrics": {"error": str(e)},
         }
 
-    # Driver PJLINK
-    if driver == "pjlink":
-        return pjlink_probe(device)
 
-    return {
-        "status": "unknown",
-        "detail": f"driver_not_implemented:{driver}",
-        "metrics": {},
-    }
+# Compat: si du code appelle "run" au lieu de "run_driver"
+def run(driver: str, device: Dict[str, Any]) -> Dict[str, Any]:
+    return run_driver(driver, device)
