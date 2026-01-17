@@ -1,7 +1,7 @@
 # agent/src/webapp.py
 import os
 import threading
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -36,13 +36,40 @@ def stop_collector() -> None:
     _stop_flag["stop"] = True
 
 
+def _safe_status() -> Dict[str, Any]:
+    """
+    Garantit que le template peut toujours afficher status.* sans planter,
+    même au premier lancement (avant toute collecte).
+    """
+    return {
+        "next_collect_in_s": None,
+        "last_run_at": None,
+        "last_send_ok": None,
+        "last_send_error": None,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     cfg = load_config(CONFIG_PATH)
+
     last_status = get_last_status()
+    if not isinstance(last_status, dict):
+        last_status = {}
+
+    # Option A : le template utilise 'status' -> on l'expose systématiquement
+    status = _safe_status()
+    status.update(last_status)
+
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "cfg": cfg, "running": collector_running(), "last_status": last_status},
+        {
+            "request": request,
+            "cfg": cfg,
+            "running": collector_running(),
+            "last_status": last_status,  # on garde pour compat / debug
+            "status": status,            # <- FIX: évite UndefinedError
+        },
     )
 
 
@@ -98,13 +125,13 @@ def add_device(
     ip = (ip or "").strip()
     if not ip:
         return RedirectResponse("/", status_code=303)
-    if any(d.get("ip") == ip for d in cfg["devices"]):
+    if any((d.get("ip") or "").strip() == ip for d in cfg["devices"]):
         return RedirectResponse("/", status_code=303)
 
     driver = (driver or "ping").strip().lower()
 
     # driver configs
-    snmp_block = {}
+    snmp_block: Dict[str, Any] = {}
     if driver == "snmp":
         try:
             port = int(snmp_port)
@@ -125,7 +152,7 @@ def add_device(
             "retries": max(0, retries_i),
         }
 
-    pj_block = {}
+    pj_block: Dict[str, Any] = {}
     if driver == "pjlink":
         try:
             port = int(pjlink_port)
@@ -155,7 +182,7 @@ def add_device(
         if p in {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}:
             days.append(p)
 
-    schedule = {}
+    schedule: Dict[str, Any] = {}
     if days and (sched_start or "").strip() and (sched_end or "").strip():
         schedule = {
             "timezone": (sched_timezone or "Europe/Paris").strip() or "Europe/Paris",
@@ -212,6 +239,8 @@ def update_device(
 ):
     cfg = load_config(CONFIG_PATH)
     devices = cfg.get("devices", [])
+    if not isinstance(devices, list):
+        devices = []
 
     original_ip = (original_ip or "").strip()
     ip = (ip or "").strip()
@@ -219,12 +248,12 @@ def update_device(
         return RedirectResponse("/", status_code=303)
 
     # collision si on change l'IP vers une autre déjà existante
-    if ip != original_ip and any(d.get("ip") == ip for d in devices):
+    if ip != original_ip and any((d.get("ip") or "").strip() == ip for d in devices if isinstance(d, dict)):
         return RedirectResponse("/", status_code=303)
 
     driver = (driver or "ping").strip().lower()
 
-    snmp_block = {}
+    snmp_block: Dict[str, Any] = {}
     if driver == "snmp":
         try:
             port = int(snmp_port)
@@ -245,7 +274,7 @@ def update_device(
             "retries": max(0, retries_i),
         }
 
-    pj_block = {}
+    pj_block: Dict[str, Any] = {}
     if driver == "pjlink":
         try:
             port = int(pjlink_port)
@@ -274,7 +303,7 @@ def update_device(
         if p in {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}:
             days.append(p)
 
-    schedule = {}
+    schedule: Dict[str, Any] = {}
     if days and (sched_start or "").strip() and (sched_end or "").strip():
         schedule = {
             "timezone": (sched_timezone or "Europe/Paris").strip() or "Europe/Paris",
@@ -282,6 +311,8 @@ def update_device(
         }
 
     for d in devices:
+        if not isinstance(d, dict):
+            continue
         if (d.get("ip") or "").strip() == original_ip:
             d["ip"] = ip
             d["name"] = (name or "").strip()
