@@ -1,61 +1,33 @@
 # backend/app/main.py
+from __future__ import annotations
+
 import json
-import os
 import secrets
-import threading
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import (
-    FastAPI,
-    Depends,
-    Header,
-    HTTPException,
-    Request,
-    Form,
-)
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
 
 from .db import SessionLocal, engine
-from .models import Base, Site, Device, DeviceEvent
+from .models import Base, Site, Device
 
-
-# ---------------------------------------------------------------------
-# APP / TEMPLATES
-# ---------------------------------------------------------------------
-
-app = FastAPI(title="AV Monitoring MVP Backend")
 templates = Jinja2Templates(directory="app/templates")
 
 
-# ---------------------------------------------------------------------
-# DB dependency
-# ---------------------------------------------------------------------
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ---------------------------------------------------------------------
-# Helpers UI
-# ---------------------------------------------------------------------
-
 def _uptime_centis_to_human(value: Any) -> str:
     """
-    sysUpTime SNMP (OID 1.3.6.1.2.1.1.3.0) est en centièmes de seconde.
+    sysUpTime SNMP est en centièmes de seconde.
     """
     if value is None:
         return ""
@@ -90,147 +62,81 @@ def _sys_descr_short(s: Any, max_len: int = 90) -> str:
     return txt if len(txt) <= max_len else (txt[: max_len - 1] + "…")
 
 
-def _should_log_event(prev: Dict[str, Any], new: Dict[str, Any]) -> bool:
-    """
-    On log un DeviceEvent si changement intéressant.
-    """
-    if (prev.get("status") or "") != (new.get("status") or ""):
-        return True
-    if (prev.get("detail") or "") != (new.get("detail") or ""):
-        return True
-    if (prev.get("driver") or "") != (new.get("driver") or ""):
-        return True
-
-    prev_m = prev.get("metrics") or {}
-    new_m = new.get("metrics") or {}
-    if not isinstance(prev_m, dict):
-        prev_m = {}
-    if not isinstance(new_m, dict):
-        new_m = {}
-
-    # champs utiles
-    for k in ("snmp_ok", "sys_uptime", "sys_descr"):
-        if (prev_m.get(k) or "") != (new_m.get(k) or ""):
-            return True
-
-    return False
+def _as_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
-# ---------------------------------------------------------------------
-# Retention / Purge config
-# ---------------------------------------------------------------------
-
-def _env_int(name: str, default: int) -> int:
+def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
     try:
-        return int(str(os.getenv(name, "")).strip())
+        return getattr(obj, name)
     except Exception:
         return default
 
 
-EVENT_RETENTION_DAYS = max(1, _env_int("EVENT_RETENTION_DAYS", 90))
-PURGE_INTERVAL_HOURS = max(1, _env_int("PURGE_INTERVAL_HOURS", 24))
+def _safe_setattr(obj: Any, name: str, value: Any) -> None:
+    try:
+        if hasattr(obj, name):
+            setattr(obj, name, value)
+    except Exception:
+        pass
 
-_purge_stop = {"stop": False}
-_purge_thread: Optional[threading.Thread] = None
 
-
-def purge_old_events_once(retention_days: int) -> int:
-    cutoff = _now_utc() - timedelta(days=retention_days)
+# ------------------------------------------------------------
+# DB dependency
+# ------------------------------------------------------------
+def get_db():
     db = SessionLocal()
     try:
-        deleted = (
-            db.query(DeviceEvent)
-            .filter(DeviceEvent.created_at < cutoff)
-            .delete(synchronize_session=False)
-        )
-        db.commit()
-        return int(deleted or 0)
-    except Exception as e:
-        db.rollback()
-        print(f"[purge] failed: {e}", flush=True)
-        return 0
+        yield db
     finally:
         db.close()
 
 
-def _purge_loop():
-    print(
-        f"[purge] started (retention_days={EVENT_RETENTION_DAYS}, interval_hours={PURGE_INTERVAL_HOURS})",
-        flush=True,
-    )
-    deleted = purge_old_events_once(EVENT_RETENTION_DAYS)
-    print(f"[purge] initial purge deleted={deleted}", flush=True)
-
-    sleep_s = PURGE_INTERVAL_HOURS * 3600
-    while not _purge_stop.get("stop", False):
-        # sommeil interruptible
-        for _ in range(sleep_s):
-            if _purge_stop.get("stop", False):
-                break
-            time.sleep(1)
-
-        if _purge_stop.get("stop", False):
-            break
-
-        deleted = purge_old_events_once(EVENT_RETENTION_DAYS)
-        print(f"[purge] periodic purge deleted={deleted}", flush=True)
-
-    print("[purge] stopped", flush=True)
+# ------------------------------------------------------------
+# App + DB init retry
+# ------------------------------------------------------------
+app = FastAPI(title="AV Monitoring MVP Backend")
 
 
-# ---------------------------------------------------------------------
-# DB init with retry (IMPORTANT)
-# ---------------------------------------------------------------------
-
-def _wait_for_db_and_init(max_wait_s: int = 90) -> None:
+def _init_db_with_retry(max_wait_s: int = 25) -> None:
     """
-    Attend que Postgres soit prêt, puis crée les tables.
-    Evite que l'app crashe si la DB met quelques secondes à répondre.
+    En Docker, le backend peut démarrer avant postgres.
+    On attend un peu avant d'échouer.
     """
-    deadline = time.time() + max_wait_s
+    start = time.time()
     last_err: Optional[Exception] = None
-
-    while time.time() < deadline:
+    while time.time() - start < max_wait_s:
         try:
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
             Base.metadata.create_all(bind=engine)
-            print("[startup] DB ready, schema ensured", flush=True)
             return
-        except OperationalError as e:
-            last_err = e
-            print("[startup] DB not ready yet, retrying...", flush=True)
-            time.sleep(2)
         except Exception as e:
             last_err = e
-            print(f"[startup] DB init error, retrying: {e}", flush=True)
-            time.sleep(2)
-
-    raise RuntimeError(f"DB not ready after {max_wait_s}s: {last_err}")
-
-
-@app.on_event("startup")
-def _startup():
-    _wait_for_db_and_init(max_wait_s=90)
-
-    global _purge_thread
-    if _purge_thread is None or not _purge_thread.is_alive():
-        _purge_stop["stop"] = False
-        _purge_thread = threading.Thread(target=_purge_loop, daemon=True)
-        _purge_thread.start()
+            time.sleep(1)
+    if last_err:
+        raise last_err
 
 
-@app.on_event("shutdown")
-def _shutdown():
-    _purge_stop["stop"] = True
+_init_db_with_retry()
 
 
-# ---------------------------------------------------------------------
-# ADMIN API (JSON)
-# ---------------------------------------------------------------------
+# ------------------------------------------------------------
+# Health
+# ------------------------------------------------------------
+@app.get("/health")
+def health():
+    return {"ok": True, "ts": _now_utc().isoformat()}
 
+
+# ------------------------------------------------------------
+# Admin API: create site (token auto si non fourni)
+# ------------------------------------------------------------
 @app.post("/admin/create-site")
-def create_site(name: str, token: Optional[str] = None, db: Session = Depends(get_db)):
+def create_site(name: str, token: str | None = None, db: Session = Depends(get_db)):
+    """
+    API simple (peut être appelée à la main ou via un petit front).
+    - Si le site existe => retourne son token (utile)
+    - Sinon => crée et retourne le token généré
+    """
     name = (name or "").strip()
     token = (token or "").strip() if token else None
 
@@ -257,10 +163,9 @@ def create_site(name: str, token: Optional[str] = None, db: Session = Depends(ge
     return {"created": True, "site_id": s.id, "site": s.name, "token": s.token}
 
 
-# ---------------------------------------------------------------------
-# INGEST (AGENT -> BACKEND)
-# ---------------------------------------------------------------------
-
+# ------------------------------------------------------------
+# Ingest (Agent -> Backend)
+# ------------------------------------------------------------
 @app.post("/ingest")
 def ingest(
     payload: Dict[str, Any],
@@ -301,12 +206,13 @@ def ingest(
         incoming_building = (d.get("building") or "").strip()
         incoming_room = (d.get("room") or "").strip()
 
-        incoming_status = (d.get("status") or "unknown").strip() or "unknown"
+        incoming_status = (d.get("status") or "unknown").strip()
         incoming_detail = (d.get("detail") or "").strip() or None
 
-        incoming_metrics = d.get("metrics") or {}
-        if not isinstance(incoming_metrics, dict):
-            incoming_metrics = {}
+        # verdict optionnel (ok/fault/expected_off/doubt/unknown)
+        incoming_verdict = (d.get("verdict") or "").strip().lower() or None
+
+        incoming_metrics = _as_dict(d.get("metrics") or {})
 
         dev = (
             db.query(Device)
@@ -315,7 +221,6 @@ def ingest(
             .first()
         )
 
-        is_new = False
         if dev is None:
             dev = Device(
                 site_id=site.id,
@@ -325,45 +230,37 @@ def ingest(
                 driver=incoming_driver,
             )
             db.add(dev)
-            db.flush()  # garantit dev.id
-            is_new = True
 
-        prev_snapshot = {
-            "status": dev.status,
-            "detail": dev.detail,
-            "driver": dev.driver,
-            "metrics": dev.metrics or {},
-        }
-
-        # Upsert device
+        # Champs standard
         dev.name = incoming_name
         dev.device_type = incoming_type
         dev.driver = incoming_driver
-        dev.building = incoming_building
-        dev.room = incoming_room
         dev.status = incoming_status
         dev.detail = incoming_detail
-        dev.metrics = incoming_metrics
         dev.last_seen = now
 
-        # Historique
-        new_snapshot = {
-            "status": incoming_status,
-            "detail": incoming_detail,
-            "driver": incoming_driver,
-            "metrics": incoming_metrics,
-        }
+        # Champs optionnels selon ton models.py / migrations
+        _safe_setattr(dev, "building", incoming_building)
+        _safe_setattr(dev, "room", incoming_room)
 
-        if is_new or _should_log_event(prev_snapshot, new_snapshot):
-            ev = DeviceEvent(
-                device_id=dev.id,
-                site_id=site.id,
-                ip=ip,
-                status=incoming_status,
-                detail=incoming_detail,
-                metrics=incoming_metrics,
-            )
-            db.add(ev)
+        # metrics : si colonne présente -> set. Sinon -> on les ignore (mais on ne casse pas).
+        if hasattr(dev, "metrics"):
+            _safe_setattr(dev, "metrics", incoming_metrics)
+
+        # verdict : si colonne présente -> set; sinon, on le met dans metrics["verdict"] si possible
+        if incoming_verdict:
+            if hasattr(dev, "verdict"):
+                _safe_setattr(dev, "verdict", incoming_verdict)
+            else:
+                if hasattr(dev, "metrics"):
+                    # enrichit les metrics en place
+                    m = _as_dict(_safe_getattr(dev, "metrics", {}) or {})
+                    m["verdict"] = incoming_verdict
+                    _safe_setattr(dev, "metrics", m)
+
+        # last_ok_at (si tu ajoutes la colonne plus tard)
+        if incoming_status.lower() == "online":
+            _safe_setattr(dev, "last_ok_at", now)
 
         upserted += 1
 
@@ -371,15 +268,16 @@ def ingest(
     return {"ok": True, "upserted": upserted}
 
 
-# ---------------------------------------------------------------------
-# API (JSON)
-# ---------------------------------------------------------------------
-
+# ------------------------------------------------------------
+# API JSON
+# ------------------------------------------------------------
 @app.get("/devices")
 def list_devices(db: Session = Depends(get_db)):
     rows = db.query(Device).order_by(Device.site_id.asc(), Device.ip.asc()).all()
     out: List[Dict[str, Any]] = []
+
     for d in rows:
+        metrics = _as_dict(_safe_getattr(d, "metrics", {}) or {})
         out.append(
             {
                 "id": d.id,
@@ -388,12 +286,14 @@ def list_devices(db: Session = Depends(get_db)):
                 "ip": d.ip,
                 "type": d.device_type,
                 "driver": d.driver,
-                "building": d.building,
-                "room": d.room,
+                "building": (_safe_getattr(d, "building", "") or "").strip(),
+                "room": (_safe_getattr(d, "room", "") or "").strip(),
                 "status": d.status,
                 "detail": d.detail,
-                "metrics": d.metrics or {},
+                "verdict": (_safe_getattr(d, "verdict", None) or metrics.get("verdict")),
+                "metrics": metrics,
                 "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+                "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
             }
         )
     return out
@@ -405,6 +305,7 @@ def device_detail(device_id: int, db: Session = Depends(get_db)):
     if not d:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    metrics = _as_dict(_safe_getattr(d, "metrics", {}) or {})
     return {
         "id": d.id,
         "site_id": d.site_id,
@@ -412,179 +313,20 @@ def device_detail(device_id: int, db: Session = Depends(get_db)):
         "ip": d.ip,
         "type": d.device_type,
         "driver": d.driver,
-        "building": d.building,
-        "room": d.room,
+        "building": (_safe_getattr(d, "building", "") or "").strip(),
+        "room": (_safe_getattr(d, "room", "") or "").strip(),
         "status": d.status,
         "detail": d.detail,
-        "metrics": d.metrics or {},
+        "verdict": (_safe_getattr(d, "verdict", None) or metrics.get("verdict")),
+        "metrics": metrics,
         "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+        "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
     }
 
 
-@app.get("/devices/{device_id}/events")
-def device_events(device_id: int, limit: int = 100, db: Session = Depends(get_db)):
-    rows = (
-        db.query(DeviceEvent)
-        .filter(DeviceEvent.device_id == device_id)
-        .order_by(DeviceEvent.created_at.desc())
-        .limit(min(max(limit, 1), 500))
-        .all()
-    )
-    return [
-        {
-            "id": e.id,
-            "device_id": e.device_id,
-            "site_id": e.site_id,
-            "ip": e.ip,
-            "status": e.status,
-            "detail": e.detail,
-            "metrics": e.metrics or {},
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-        }
-        for e in rows
-    ]
-
-
-# ---------------------------------------------------------------------
-# UI : Dashboard
-# ---------------------------------------------------------------------
-
-@app.get("/ui", response_class=HTMLResponse)
-def ui_dashboard(request: Request, db: Session = Depends(get_db)):
-    sites = db.query(Site).order_by(Site.id.asc()).all()
-    devices = db.query(Device).all()
-
-    site_cards = []
-    for s in sites:
-        s_devs = [d for d in devices if d.site_id == s.id]
-        offline = sum(1 for d in s_devs if (d.status or "").lower() == "offline")
-        unknown = sum(1 for d in s_devs if (d.status or "").lower() == "unknown")
-        online = sum(1 for d in s_devs if (d.status or "").lower() == "online")
-
-        has_contact = bool(
-            (getattr(s, "contact_email", "") or "").strip()
-            or (getattr(s, "contact_phone", "") or "").strip()
-        )
-
-        site_cards.append(
-            {
-                "id": s.id,
-                "name": s.name,
-                "device_count": len(s_devs),
-                "online_count": online,
-                "offline_count": offline,
-                "unknown_count": unknown,
-                "has_contact": has_contact,
-            }
-        )
-
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "kpis": {
-                "total_sites": len(sites),
-                "total_devices": len(devices),
-                "offline_devices": sum(1 for d in devices if (d.status or "").lower() == "offline"),
-                "unknown_devices": sum(1 for d in devices if (d.status or "").lower() == "unknown"),
-            },
-            "site_cards": site_cards,
-        },
-    )
-
-
-# ---------------------------------------------------------------------
-# UI : Sites (liste + création)
-# ---------------------------------------------------------------------
-
-@app.get("/ui/sites", response_class=HTMLResponse)
-def ui_sites(request: Request, db: Session = Depends(get_db)):
-    sites = db.query(Site).order_by(Site.id.asc()).all()
-    return templates.TemplateResponse(
-        "sites.html",
-        {"request": request, "sites": sites},
-    )
-
-
-@app.post("/ui/sites/create")
-def ui_sites_create(
-    name: str = Form(...),
-    token: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    name = (name or "").strip()
-    token = (token or "").strip()
-
-    if not name:
-        return RedirectResponse("/ui/sites", status_code=303)
-
-    existing = db.query(Site).filter(Site.name == name).first()
-    if existing:
-        return RedirectResponse("/ui/sites", status_code=303)
-
-    if not token:
-        token = secrets.token_urlsafe(32)
-
-    s = Site(name=name, token=token)
-    db.add(s)
-    db.commit()
-
-    return RedirectResponse("/ui/sites", status_code=303)
-
-
-# ---------------------------------------------------------------------
-# UI : Site detail + contact
-# ---------------------------------------------------------------------
-
-@app.get("/ui/sites/{site_id}", response_class=HTMLResponse)
-def ui_site_detail(request: Request, site_id: int, db: Session = Depends(get_db)):
-    site = db.query(Site).filter(Site.id == site_id).first()
-    if not site:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    devices = (
-        db.query(Device)
-        .filter(Device.site_id == site_id)
-        .order_by(Device.building.asc(), Device.room.asc(), Device.ip.asc())
-        .all()
-    )
-
-    return templates.TemplateResponse(
-        "site_detail.html",
-        {"request": request, "site": site, "devices": devices, "saved": False},
-    )
-
-
-@app.post("/ui/sites/{site_id}/contact")
-def ui_site_update_contact(
-    site_id: int,
-    contact_first_name: str = Form(""),
-    contact_last_name: str = Form(""),
-    contact_title: str = Form(""),
-    contact_email: str = Form(""),
-    contact_phone: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    site = db.query(Site).filter(Site.id == site_id).first()
-    if not site:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    # Champs optionnels: si votre modèle Site n'a pas ces colonnes, ceci plantera.
-    # Assurez-vous que Site possède ces colonnes (comme prévu).
-    site.contact_first_name = contact_first_name.strip()
-    site.contact_last_name = contact_last_name.strip()
-    site.contact_title = contact_title.strip()
-    site.contact_email = contact_email.strip()
-    site.contact_phone = contact_phone.strip()
-    db.commit()
-
-    return RedirectResponse(f"/ui/sites/{site_id}", status_code=303)
-
-
-# ---------------------------------------------------------------------
+# ------------------------------------------------------------
 # UI : Agents
-# ---------------------------------------------------------------------
-
+# ------------------------------------------------------------
 @app.get("/ui/agents", response_class=HTMLResponse)
 def ui_agents(request: Request, db: Session = Depends(get_db)):
     sites = db.query(Site).order_by(Site.id.asc()).all()
@@ -600,28 +342,32 @@ def ui_agents(request: Request, db: Session = Depends(get_db)):
     )
 
 
+# ------------------------------------------------------------
+# UI : Devices by Agent (tri bâtiment / salle)
+# ------------------------------------------------------------
 @app.get("/ui/agents/{site_id}/devices", response_class=HTMLResponse)
 def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_db)):
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
 
-    rows = (
-        db.query(Device)
-        .filter(Device.site_id == site_id)
-        .order_by(Device.building.asc(), Device.room.asc(), Device.ip.asc())
-        .all()
-    )
+    rows = db.query(Device).filter(Device.site_id == site_id).all()
+
+    def _key(d: Device):
+        b = ((_safe_getattr(d, "building", "") or "").strip() or "—").lower()
+        r = ((_safe_getattr(d, "room", "") or "").strip() or "—").lower()
+        return (b, r, (d.ip or "").lower())
+
+    rows_sorted = sorted(rows, key=_key)
 
     grouped: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 
-    for d in rows:
-        building = (d.building or "").strip() or "—"
-        room = (d.room or "").strip() or "—"
+    for d in rows_sorted:
+        building = (_safe_getattr(d, "building", "") or "").strip() or "—"
+        room = (_safe_getattr(d, "room", "") or "").strip() or "—"
 
-        m = d.metrics or {}
-        if not isinstance(m, dict):
-            m = {}
+        m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
+        verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip()
 
         m_view = dict(m)
         m_view["uptime_human"] = _uptime_centis_to_human(m.get("sys_uptime"))
@@ -634,11 +380,13 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
             "ip": d.ip,
             "device_type": d.device_type,
             "driver": d.driver,
-            "building": d.building,
-            "room": d.room,
+            "building": building,
+            "room": room,
             "status": d.status,
             "detail": d.detail,
+            "verdict": verdict,
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+            "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
             "metrics": m_view,
         }
 
@@ -650,48 +398,23 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
     )
 
 
-# ---------------------------------------------------------------------
-# UI : Device detail + metrics + historique
-# ---------------------------------------------------------------------
-
+# ------------------------------------------------------------
+# UI : Device detail
+# ------------------------------------------------------------
 @app.get("/ui/devices/{device_id}", response_class=HTMLResponse)
 def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get_db)):
     d = db.query(Device).filter(Device.id == device_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    m = d.metrics or {}
-    if not isinstance(m, dict):
-        m = {}
+    m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
+    verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip()
 
     m_view = dict(m)
     m_view["uptime_human"] = _uptime_centis_to_human(m.get("sys_uptime"))
     m_view["sys_descr_short"] = _sys_descr_short(m.get("sys_descr"))
+
     metrics_json = json.dumps(m_view, indent=2, ensure_ascii=False)
-
-    events = (
-        db.query(DeviceEvent)
-        .filter(DeviceEvent.device_id == device_id)
-        .order_by(DeviceEvent.created_at.desc())
-        .limit(50)
-        .all()
-    )
-
-    events_view = []
-    for e in events:
-        em = e.metrics or {}
-        if not isinstance(em, dict):
-            em = {}
-        events_view.append(
-            {
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-                "status": e.status,
-                "detail": e.detail,
-                "snmp_ok": em.get("snmp_ok"),
-                "uptime_human": _uptime_centis_to_human(em.get("sys_uptime")),
-                "sys_descr_short": _sys_descr_short(em.get("sys_descr")),
-            }
-        )
 
     device_view = {
         "id": d.id,
@@ -700,11 +423,13 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
         "ip": d.ip,
         "device_type": d.device_type,
         "driver": d.driver,
-        "building": d.building,
-        "room": d.room,
+        "building": (_safe_getattr(d, "building", "") or "").strip(),
+        "room": (_safe_getattr(d, "room", "") or "").strip(),
         "status": d.status,
         "detail": d.detail,
+        "verdict": verdict,
         "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+        "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
     }
 
     return templates.TemplateResponse(
@@ -714,7 +439,5 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
             "device": device_view,
             "metrics": m_view,
             "metrics_json": metrics_json,
-            "events": events_view,
-            "retention_days": EVENT_RETENTION_DAYS,
         },
     )

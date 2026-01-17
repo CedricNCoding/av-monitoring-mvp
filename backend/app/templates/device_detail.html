@@ -3,155 +3,525 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AV Monitoring — Device {{ device.id }}</title>
+  <title>AV Monitoring — Device #{{ device.id }}</title>
   <style>
-    :root {
-      --primary: #2563eb;
-      --bg: #f8fafc;
-      --card-bg: #ffffff;
-      --text-main: #1e293b;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --danger: #ef4444;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --dark-code: #0f172a;
+    :root{
+      --primary:#2563eb;
+      --primary-hover:#1d4ed8;
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e2e8f0;
+      --shadow: 0 10px 20px rgba(2,6,23,.06);
+      --shadow-sm: 0 4px 10px rgba(2,6,23,.06);
+      --ring: 0 0 0 4px rgba(37,99,235,.15);
+
+      --ok:#10b981;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --info:#6366f1;
+
+      --code-bg:#0b1220;
+      --code-border:#1f2a44;
+      --code-text:#cbd5e1;
     }
 
-    body { 
-      font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-      background-color: var(--bg);
-      color: var(--text-main);
-      margin: 0;
-      padding: 24px;
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       line-height: 1.5;
+      padding: 28px;
     }
 
-    .container { max-width: 1200px; margin: 0 auto; }
+    a{color:inherit}
+    .container{max-width:1200px; margin:0 auto;}
 
-    /* Header & Nav */
-    .back-link { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); text-decoration: none; font-size: 14px; margin-bottom: 20px; transition: color 0.2s; }
-    .back-link:hover { color: var(--primary); }
-    
-    header { margin-bottom: 32px; display: flex; align-items: center; justify-content: space-between; }
-    h1 { font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -0.025em; }
-    h2 { font-size: 18px; font-weight: 700; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px; }
+    /* Header / Nav */
+    .topbar{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      margin-bottom: 12px;
+    }
+    .title h1{
+      margin:0;
+      font-size: 26px;
+      font-weight: 950;
+      letter-spacing:-0.02em;
+    }
+    .title p{margin:6px 0 0 0; color:var(--muted); max-width: 90ch;}
+    .nav{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-left:auto;
+      justify-content:flex-end;
+    }
+    .nav a{
+      text-decoration:none;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      background: var(--card);
+      border-radius:10px;
+      box-shadow: var(--shadow-sm);
+      font-weight:650;
+      font-size:13px;
+      color: var(--text);
+      transition: .15s ease;
+    }
+    .nav a:hover{transform: translateY(-1px); border-color:#cbd5e1}
+    .nav a:focus{outline:none; box-shadow: var(--ring);}
 
-    /* Layout Grid */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 24px; margin-top: 24px; }
-    
+    .crumb{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin: 6px 0 16px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .crumb a{
+      text-decoration:none;
+      color: var(--primary);
+      font-weight: 900;
+    }
+    .crumb a:hover{text-decoration: underline;}
+    .crumb code{
+      background:#f1f5f9;
+      padding: 4px 8px;
+      border-radius: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      color: var(--primary);
+      font-weight: 800;
+    }
+
     /* Cards */
-    .card { 
-      background: var(--card-bg); 
-      border: 1px solid var(--border); 
-      border-radius: 12px; 
-      padding: 24px; 
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 10px;
     }
-    
-    /* Tables */
-    table { border-collapse: collapse; width: 100%; }
-    th { 
-      text-align: left; 
-      font-size: 13px; 
-      font-weight: 500; 
-      color: var(--text-muted); 
-      padding: 10px 0; 
-      border-bottom: 1px solid #f1f5f9; 
-      width: 160px;
+    .card{
+      background: var(--card);
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
     }
-    td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; font-weight: 500; }
-    tr:last-child th, tr:last-child td { border-bottom: none; }
+    .card-hd{
+      padding: 14px 16px;
+      border-bottom:1px solid var(--border);
+      background: #fcfcfd;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .card-hd h2{
+      margin:0;
+      font-size: 12px;
+      font-weight: 950;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .card-bd{padding: 14px 16px;}
 
-    /* Elements */
-    code { font-family: 'JetBrains Mono', monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--primary); font-size: 0.9em; }
-    pre { 
-      background: var(--dark-code); 
-      color: #94a3b8; 
-      padding: 20px; 
-      border-radius: 12px; 
-      overflow: auto; 
-      font-size: 13px; 
+    .span-6{grid-column: span 6;}
+    .span-12{grid-column: span 12;}
+    @media (max-width: 980px){
+      body{padding:18px;}
+      .span-6{grid-column: span 12;}
+    }
+
+    /* Table key-values */
+    table{width:100%; border-collapse: collapse;}
+    th{
+      text-align:left;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+      width: 220px;
+      vertical-align: top;
+    }
+    td{
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 14px;
+      font-weight: 650;
+      color: var(--text);
+      vertical-align: top;
+    }
+    tr:last-child th, tr:last-child td{border-bottom:none;}
+
+    code.ip, code.mono{
+      background:#f1f5f9;
+      padding: 4px 8px;
+      border-radius: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      color: var(--primary);
+      font-weight: 850;
+    }
+
+    .muted{color: var(--muted); font-size: 12px; font-weight: 600;}
+    .stack{display:flex; flex-direction:column; gap:4px;}
+    .chips{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      border: 1px solid var(--border);
+      white-space:nowrap;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 950;
+      font-size: 11px;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      width: fit-content;
+      white-space:nowrap;
+    }
+    .b-ok{background: rgba(16,185,129,.12); color: #065f46;}
+    .b-exp{background: rgba(100,116,139,.14); color: #334155;}
+    .b-fault{background: rgba(239,68,68,.12); color: #7f1d1d;}
+    .b-doubt{background: rgba(245,158,11,.16); color: #7c2d12;}
+    .b-unk{background: rgba(99,102,241,.14); color: #3730a3;}
+
+    .dot{width:9px;height:9px;border-radius:999px;display:inline-block;background:#94a3b8;}
+    .dot.ok{background: var(--ok);}
+    .dot.bad{background: var(--bad);}
+    .dot.warn{background: var(--warn);}
+    .dot.unk{background: var(--info);}
+
+    /* Buttons */
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      box-shadow: var(--shadow-sm);
+      cursor:pointer;
+      font-weight: 900;
+      font-size: 13px;
+      color: var(--text);
+      text-decoration:none;
+      transition: .15s ease;
+    }
+    .btn:hover{transform: translateY(-1px); border-color:#cbd5e1}
+    .btn.primary{
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .btn.primary:hover{background: var(--primary-hover); border-color: var(--primary-hover);}
+    .btn:focus{outline:none; box-shadow: var(--ring);}
+
+    /* JSON */
+    .codebox{
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 14px;
+      padding: 14px 14px;
+      overflow:auto;
+      color: var(--code-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12.5px;
       line-height: 1.6;
-      border: 1px solid #334155;
+      white-space: pre;
     }
-    
-    /* Status Labels */
-    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; text-transform: uppercase; font-size: 12px; }
-    .status-badge.ok { color: var(--success); }
-    .status-badge.bad { color: var(--danger); }
-    .status-badge.warn { color: var(--warning); }
-    
-    .pill { background: #f1f5f9; padding: 2px 10px; border-radius: 999px; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border); }
 
-    .muted { color: var(--text-muted); font-size: 13px; font-weight: 400; }
+    .kpi-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top: 8px;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
-    <a href="/ui/agents/{{ device.site_id }}/devices" class="back-link">← Retour aux équipements du site</a>
 
-    <header>
-      <div>
+    <div class="topbar">
+      <div class="title">
         <h1>Device #{{ device.id }}</h1>
-        <div class="muted">Diagnostic détaillé et métriques temps réel</div>
+        <p>Diagnostic détaillé, métriques (SNMP/PJLink), et éléments de décision (OK / OFF attendu / PANNE / DOUTE).</p>
       </div>
-      <div class="pill" style="padding: 8px 16px; font-size: 14px;">Driver: {{ device.driver }}</div>
-    </header>
+      <nav class="nav" aria-label="Navigation">
+        <a href="/ui/agents">Agents</a>
+        <a href="/ui/agents/{{ device.site_id }}/devices">Équipements du site</a>
+        <a href="/ui/devices/{{ device.id }}" aria-current="page">Détail</a>
+      </nav>
+    </div>
+
+    <div class="crumb">
+      <span>Site</span>
+      <code>#{{ device.site_id }}</code>
+      <span class="muted">·</span>
+      <a href="/ui/agents/{{ device.site_id }}/devices">Retour au site</a>
+      <span class="muted">·</span>
+      <span class="muted">{{ device.building or "—" }} / {{ device.room or "—" }}</span>
+    </div>
+
+    {# Verdict + status #}
+    {% set v = (device.verdict or "unknown") %}
+    <div class="kpi-row">
+      <div class="chips">
+        {% if v == "ok" %}
+          <span class="badge b-ok"><span class="dot ok"></span> OK</span>
+        {% elif v == "expected_off" %}
+          <span class="badge b-exp"><span class="dot warn"></span> OFF attendu</span>
+        {% elif v == "fault" %}
+          <span class="badge b-fault"><span class="dot bad"></span> PANNE</span>
+        {% elif v == "doubt" %}
+          <span class="badge b-doubt"><span class="dot warn"></span> DOUTE</span>
+        {% else %}
+          <span class="badge b-unk"><span class="dot unk"></span> UNKNOWN</span>
+        {% endif %}
+
+        {% if device.status == "online" %}
+          <span class="chip"><span class="dot ok"></span> online</span>
+        {% elif device.status == "offline" %}
+          <span class="chip"><span class="dot bad"></span> offline</span>
+        {% else %}
+          <span class="chip"><span class="dot unk"></span> {{ device.status }}</span>
+        {% endif %}
+
+        <span class="chip">Driver: <b>{{ device.driver }}</b></span>
+        <span class="chip">Type: <b>{{ device.device_type }}</b></span>
+      </div>
+
+      <div class="chips">
+        <a class="btn" href="/ui/agents/{{ device.site_id }}/devices">← Retour</a>
+        <button class="btn primary" type="button" id="copy-json">Copier JSON</button>
+      </div>
+    </div>
 
     <div class="grid">
-      <div class="card">
-        <h2>📂 Inventaire</h2>
-        <table>
-          <tr><th>Localisation</th><td>{{ device.building or "—" }} / {{ device.room or "—" }}</td></tr>
-          <tr><th>Nom DNS/mDNS</th><td><strong>{{ device.name }}</strong></td></tr>
-          <tr><th>Adresse IP</th><td><code>{{ device.ip }}</code></td></tr>
-          <tr><th>Type d'équipement</th><td>{{ device.device_type }}</td></tr>
-          <tr><th>Site ID</th><td><code>{{ device.site_id }}</code></td></tr>
-        </table>
-      </div>
 
-      <div class="card">
-        <h2>⚡ État & Connectivité</h2>
-        <table>
-          <tr>
-            <th>Status actuel</th>
-            <td>
-              {% if device.status == "online" %}
-                <span class="status-badge ok">● Online</span>
-              {% elif device.status == "offline" %}
-                <span class="status-badge bad">● Offline</span>
-              {% else %}
-                <span class="status-badge warn">● {{ device.status }}</span>
-              {% endif %}
-            </td>
-          </tr>
-          <tr><th>Détail erreur</th><td><code style="color:var(--danger)">{{ device.detail or "Aucune erreur" }}</code></td></tr>
-          <tr><th>Last seen (UTC)</th><td class="muted">{{ device.last_seen or "Jamais" }}</td></tr>
-          <tr><th>SNMP Status</th><td>{{ "✅ Connecté" if metrics.snmp_ok else "❌ Échec" }}</td></tr>
-          <tr><th>Uptime</th><td><span style="color:var(--primary)">{{ metrics.uptime_human or "—" }}</span></td></tr>
-        </table>
-      </div>
-    </div>
+      <!-- Inventaire -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>📦 Inventaire</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr><th>Nom</th><td>{{ device.name or "—" }}</td></tr>
+            <tr><th>Adresse IP</th><td><code class="ip">{{ device.ip }}</code></td></tr>
+            <tr><th>Localisation</th><td>{{ device.building or "—" }} / {{ device.room or "—" }}</td></tr>
+            <tr><th>Site</th><td><code class="mono">{{ device.site_id }}</code></td></tr>
+            <tr><th>Dernière vue</th><td class="muted">{{ device.last_seen or "Jamais" }}</td></tr>
+          </table>
+        </div>
+      </section>
 
-    <div class="card" style="margin-top: 24px;">
-      <h2>🔍 Détails SNMP</h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-        <table>
-          <tr><th>sysDescr</th><td class="muted" style="line-height: 1.4;">{{ metrics.sys_descr or "—" }}</td></tr>
-        </table>
-        <table>
-          <tr><th>sysUpTime brut</th><td>{{ metrics.sys_uptime or "—" }}</td></tr>
-          <tr><th>Port de scan</th><td><code>{{ metrics.snmp_port or "161" }}</code></td></tr>
-          <tr><th>Dernière erreur</th><td class="bad" style="font-size: 12px;">{{ metrics.snmp_error or "—" }}</td></tr>
-        </table>
-      </div>
-    </div>
+      <!-- Résumé technique -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>⚡ Résumé technique</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr>
+              <th>Détail</th>
+              <td>
+                {% if device.detail %}
+                  <code class="mono" style="color: var(--bad);">{{ device.detail }}</code>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Uptime (lisible)</th>
+              <td>
+                {% if metrics and metrics.uptime_human %}
+                  <span style="color:var(--primary); font-weight:950;">{{ metrics.uptime_human }}</span>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>sysDescr</th>
+              <td>
+                {% if metrics and metrics.sys_descr %}
+                  <div class="muted" style="white-space: pre-wrap; font-weight:650;">{{ metrics.sys_descr }}</div>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
 
-    <div style="margin-top: 32px;">
-      <h2 class="muted" style="margin-bottom: 8px; font-size: 14px; text-transform: uppercase;">Données brutes (JSON)</h2>
-      <pre>{{ metrics_json }}</pre>
+      <!-- Système / Réseau -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>🧠 Système / Réseau</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr><th>sysUpTime (brut)</th><td>{{ metrics.sys_uptime or "—" }}</td></tr>
+            <tr><th>Modèle / Vendor</th><td>{{ metrics.model or metrics.vendor or "—" }}</td></tr>
+            <tr><th>MAC</th><td><code class="mono">{{ metrics.mac or "—" }}</code></td></tr>
+            <tr><th>Port / Proto</th><td>{{ metrics.snmp_port or metrics.pjlink_port or "—" }}</td></tr>
+          </table>
+          <div class="muted" style="margin-top:10px;">
+            Les champs ci-dessus apparaissent si l’agent les remonte (SNMP/PJLink).
+          </div>
+        </div>
+      </section>
+
+      <!-- SNMP -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>🛰️ SNMP</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr>
+              <th>Connectivité</th>
+              <td>
+                {% if metrics and metrics.snmp_ok %}
+                  <span class="badge b-ok"><span class="dot ok"></span> OK</span>
+                {% else %}
+                  <span class="badge b-fault"><span class="dot bad"></span> KO</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr><th>Port</th><td><code class="mono">{{ metrics.snmp_port or "161" }}</code></td></tr>
+            <tr><th>Dernière erreur</th><td class="muted">{{ metrics.snmp_error or "—" }}</td></tr>
+            <tr><th>Community</th><td class="muted">{{ metrics.snmp_community or "—" }}</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <!-- PJLink -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>📽️ PJLink</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr>
+              <th>Connectivité</th>
+              <td>
+                {% if metrics and metrics.pjlink_ok %}
+                  <span class="badge b-ok"><span class="dot ok"></span> OK</span>
+                {% else %}
+                  <span class="badge b-unk"><span class="dot unk"></span> N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr><th>Port</th><td><code class="mono">{{ metrics.pjlink_port or "4352" }}</code></td></tr>
+            <tr><th>Power</th><td>{{ metrics.pjlink_power or "—" }}</td></tr>
+            <tr><th>Input</th><td>{{ metrics.pjlink_input or "—" }}</td></tr>
+            <tr><th>Lamp hours</th><td>{{ metrics.pjlink_lamp_hours or "—" }}</td></tr>
+            <tr><th>Dernière erreur</th><td class="muted">{{ metrics.pjlink_error or "—" }}</td></tr>
+          </table>
+          <div class="muted" style="margin-top:10px;">
+            Les champs PJLink apparaissent si le driver PJLink est activé pour cet équipement.
+          </div>
+        </div>
+      </section>
+
+      <!-- Policy (optionnel) -->
+      <section class="card span-6">
+        <div class="card-hd">
+          <h2>🗓️ Policy / Horaires</h2>
+        </div>
+        <div class="card-bd">
+          <table>
+            <tr><th>Critical</th><td>{{ metrics.policy_critical if (metrics and metrics.policy_critical is not none) else "—" }}</td></tr>
+            <tr><th>Expected ON</th><td class="muted">{{ metrics.policy_expected_on or "—" }}</td></tr>
+            <tr><th>Doute après</th><td>{{ metrics.policy_doubt_after_days or "—" }}</td></tr>
+            <tr><th>Timezone</th><td><code class="mono">{{ metrics.policy_tz or "—" }}</code></td></tr>
+          </table>
+          <div class="muted" style="margin-top:10px;">
+            Cette section s’affiche si l’agent remonte ces champs dans <code class="mono">metrics</code>.
+          </div>
+        </div>
+      </section>
+
+      <!-- JSON brut -->
+      <section class="card span-12">
+        <div class="card-hd">
+          <h2>🧾 Données brutes</h2>
+          <div class="chips">
+            <span class="chip">Conseil support : copier / coller ce JSON pour diagnostiquer.</span>
+          </div>
+        </div>
+        <div class="card-bd">
+          <div class="codebox" id="json">{{ metrics_json }}</div>
+        </div>
+      </section>
+
     </div>
   </div>
+
+  <script>
+    (function(){
+      const btn = document.getElementById('copy-json');
+      const box = document.getElementById('json');
+      if(!btn || !box) return;
+
+      btn.addEventListener('click', async () => {
+        const txt = box.textContent || '';
+        try{
+          await navigator.clipboard.writeText(txt);
+          btn.textContent = 'Copié';
+          setTimeout(() => btn.textContent = 'Copier JSON', 1200);
+        }catch(e){
+          // fallback
+          const r = document.createRange();
+          r.selectNodeContents(box);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+          document.execCommand('copy');
+          sel.removeAllRanges();
+          btn.textContent = 'Copié';
+          setTimeout(() => btn.textContent = 'Copier JSON', 1200);
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

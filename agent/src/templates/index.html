@@ -2,295 +2,286 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent AV - Administration locale</title>
+  <title>Agent AV – Administration locale</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
     :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --text: #1f2937;
+      --muted: #6b7280;
       --primary: #2563eb;
-      --bg: #f1f5f9;
-      --card-bg: #ffffff;
-      --text-main: #1e293b;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --danger: #ef4444;
-      --success: #10b981;
-      --warn: #f59e0b;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --danger: #dc2626;
     }
 
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding: 24px; line-height: 1.4; }
-    h1 { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: var(--text-main); }
-    h2 { font-size: 18px; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
 
-    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; align-items: stretch; }
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-
-    /* Formulaires */
-    .form-group { margin-bottom: 12px; }
-    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
-    input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-    input:focus, select:focus { border-color: var(--primary); outline: none; }
-
-    button { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-    button:hover { opacity: 0.9; }
-    button.secondary { background: #64748b; }
-    button.danger { background: var(--danger); }
-    button.success { background: var(--success); }
-
-    /* Status & Table */
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); }
-    .badge.running { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-    .badge.stopped { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-    .badge.driver { background: #f8fafc; color: var(--text-main); }
-
-    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-    th { text-align: left; background: #f8fafc; padding: 10px; border-bottom: 2px solid var(--border); color: var(--text-muted); }
-    td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-
-    code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color: var(--primary); font-size: 0.9em; }
-    .muted { color: var(--text-muted); font-size: 12px; }
-
-    .collector-ctrl { display: flex; gap: 8px; margin-top: 12px; }
-
-    .section-title {
-      font-size: 14px;
+    h1 {
+      margin: 0 0 24px 0;
+      font-size: 26px;
       font-weight: 800;
-      margin: 16px 0 8px 0;
-      color: var(--text-main);
     }
 
-    .panel {
-      background: #f8fafc;
-      border: 1px dashed var(--border);
+    h2 {
+      font-size: 18px;
+      margin: 0 0 16px 0;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 12px;
-      margin-top: 10px;
+      padding: 16px;
     }
 
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+    }
 
-    @media (max-width: 700px) {
-      .grid-2 { grid-template-columns: 1fr; }
-      .grid-4 { grid-template-columns: 1fr 1fr; }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    input[type="checkbox"] {
+      width: auto;
+      margin-right: 6px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: none;
+      background: var(--primary);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    code {
+      background: #eef2ff;
+      color: #1d4ed8;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      display: inline-block;
+    }
+
+    .ok { background: #dcfce7; color: #166534; }
+    .ko { background: #fee2e2; color: #991b1b; }
+    .doute { background: #fef3c7; color: #92400e; }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
     }
   </style>
 </head>
 
 <body>
 
-  <h1>Agent AV — Administration locale</h1>
+<h1>Agent AV — Administration locale</h1>
 
-  <div class="row">
-    <div class="card">
-      <h2>⚙️ Paramètres de l'agent</h2>
-      <form method="post" action="/settings">
-        <div class="form-group">
-          <label>URL d'Ingestion API</label>
-          <input name="api_url" value="{{ cfg.api_url }}" placeholder="http://server-ip:8000/ingest">
-        </div>
+<!-- ================= AGENT ================= -->
+<div class="grid">
 
-        <div class="grid-2">
-          <div class="form-group">
-            <label>Nom du Site</label>
-            <input name="site_name" value="{{ cfg.site_name }}">
-          </div>
-          <div class="form-group">
-            <label>Site Token</label>
-            <input name="site_token" type="password" value="{{ cfg.site_token }}">
-          </div>
-        </div>
+  <div class="card">
+    <h2>⚙️ Paramètres de l’agent</h2>
+    <form method="post" action="/settings">
 
-        <div class="section-title">Fréquence du reporting</div>
-        <div class="grid-2">
-          <div class="form-group">
-            <label>Si OK (sec)</label>
-            <input type="number" name="ok_interval_s" min="60" value="{{ cfg.reporting.ok_interval_s or 3600 }}">
-          </div>
-          <div class="form-group">
-            <label>Si Erreur (sec)</label>
-            <input type="number" name="ko_interval_s" min="15" value="{{ cfg.reporting.ko_interval_s or 60 }}">
-          </div>
-        </div>
+      <label>URL Backend</label>
+      <input name="api_url" value="{{ cfg.api_url }}">
 
-        <button type="submit">Appliquer les réglages</button>
-      </form>
-    </div>
+      <label>Nom du site</label>
+      <input name="site_name" value="{{ cfg.site_name }}">
 
-    <div class="card">
-      <h2>📡 État de la collecte</h2>
+      <label>Token du site</label>
+      <input name="site_token" value="{{ cfg.site_token }}" type="password">
 
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 18px;">
-        <div>
-          <div class="muted">Statut actuel</div>
-          <div style="margin-top:4px;">
-            <span class="badge {{ 'running' if running else 'stopped' }}">
-              {{ "EN COURS" if running else "ARRÊTÉ" }}
-            </span>
-          </div>
-        </div>
+      <label>Intervalle si tout est OK (secondes)</label>
+      <input type="number" name="ok_interval_s" min="300" value="{{ cfg.reporting.ok_interval_s }}">
 
-        <div class="collector-ctrl">
-          <form method="post" action="/collector/{{ 'stop' if running else 'start' }}">
-            <button type="submit" class="{{ 'danger' if running else 'success' }}">
-              {{ "Arrêter" if running else "Démarrer" }}
-            </button>
-          </form>
-        </div>
-      </div>
+      <label>Intervalle si problème détecté (secondes)</label>
+      <input type="number" name="ko_interval_s" min="60" value="{{ cfg.reporting.ko_interval_s }}">
 
-      <div style="border-top: 1px solid var(--border); padding-top: 15px;">
-        <div class="muted">Prochaine collecte : <b>{{ last_status.next_collect_in_s or '—' }}s</b></div>
-        <div class="muted">Dernière collecte : {{ last_status.last_run_at or '—' }}</div>
+      <label>Délai état « doute » (jours sans réponse)</label>
+      <input type="number" name="doubt_after_days" min="1" value="{{ cfg.reporting.doubt_after_days or 2 }}">
 
-        <div class="muted" style="margin-top:6px;">
-          Dernier envoi API :
-          {% if last_status.last_send_ok is none %}
-            <span class="muted">—</span>
-          {% elif last_status.last_send_ok %}
-            <span style="color: var(--success); font-weight: 800;">Succès</span>
-          {% else %}
-            <span style="color: var(--danger); font-weight: 800;">Erreur</span>
-          {% endif %}
-        </div>
-
-        {% if last_status.last_send_error %}
-          <div class="muted" style="margin-top:6px;">
-            <span style="color: var(--danger); font-weight: 700;">Erreur envoi :</span>
-            <span>{{ last_status.last_send_error }}</span>
-          </div>
-        {% endif %}
-
-        {% if last_status.last_collect_error %}
-          <div class="muted" style="margin-top:6px;">
-            <span style="color: var(--danger); font-weight: 700;">Erreur collecte :</span>
-            <span>{{ last_status.last_collect_error }}</span>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top: 20px;">
-    <h2>🖥️ Inventaire des équipements locaux</h2>
-
-    <form method="post" action="/devices/add" style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
-        <div class="form-group">
-          <label>IP</label>
-          <input name="ip" placeholder="192.168.1.X" required>
-        </div>
-        <div class="form-group">
-          <label>Nom</label>
-          <input name="name" placeholder="Ex : Proj salle 12">
-        </div>
-        <div class="form-group">
-          <label>Bâtiment</label>
-          <input name="building" placeholder="Ex : B1">
-        </div>
-        <div class="form-group">
-          <label>Salle</label>
-          <input name="room" placeholder="Ex : Salle 12">
-        </div>
-
-        <div class="form-group">
-          <label>Driver</label>
-          <select name="driver" id="driver-select">
-            <option value="ping">ping</option>
-            <option value="snmp">snmp</option>
-            <option value="pjlink">pjlink</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- SNMP -->
-      <div id="snmp-fields" class="panel" style="display:none;">
-        <div class="muted" style="margin-bottom:8px; font-weight:700;">Paramètres SNMP</div>
-        <div class="grid-4">
-          <div class="form-group"><label>Community</label><input name="snmp_community" value="public"></div>
-          <div class="form-group"><label>Port</label><input type="number" name="snmp_port" value="161"></div>
-          <div class="form-group"><label>Timeout</label><input type="number" name="snmp_timeout_s" value="1"></div>
-          <div class="form-group"><label>Retries</label><input type="number" name="snmp_retries" value="1"></div>
-        </div>
-        <div class="muted">Note : SNMP est combiné à ping (fallback) si la sonde SNMP échoue.</div>
-      </div>
-
-      <!-- PJLINK -->
-      <div id="pjlink-fields" class="panel" style="display:none;">
-        <div class="muted" style="margin-bottom:8px; font-weight:700;">Paramètres PJLink</div>
-        <div class="grid-4">
-          <div class="form-group">
-            <label>Port</label>
-            <input type="number" name="pjlink_port" value="4352">
-          </div>
-          <div class="form-group">
-            <label>Timeout (sec)</label>
-            <input type="number" name="pjlink_timeout_s" value="2">
-          </div>
-          <div class="form-group" style="grid-column: span 2;">
-            <label>Password (laisser vide si PJLINK 0)</label>
-            <input type="password" name="pjlink_password" placeholder="(facultatif)">
-          </div>
-        </div>
-        <div class="muted">PJLink interroge typiquement POWR / LAMP / NAME / INF1 / INF2.</div>
-      </div>
-
-      <button type="submit" style="margin-top: 10px;">+ Ajouter l'équipement</button>
+      <button type="submit">Enregistrer</button>
     </form>
-
-    <div style="overflow-x: auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>Équipement</th>
-            <th>IP</th>
-            <th>Emplacement</th>
-            <th>Type</th>
-            <th>Driver</th>
-            <th style="text-align:right;">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in cfg.devices %}
-          <tr>
-            <td><strong>{{ d.name or 'Sans nom' }}</strong></td>
-            <td><code>{{ d.ip }}</code></td>
-            <td class="muted">{{ d.building or '—' }} / {{ d.room or '—' }}</td>
-            <td>{{ d.type }}</td>
-            <td><span class="badge driver">{{ d.driver }}</span></td>
-            <td style="text-align:right;">
-              <form method="post" action="/devices/delete">
-                <input type="hidden" name="ip" value="{{ d.ip }}">
-                <button type="submit" class="danger" style="padding: 6px 10px; font-size: 11px;">Supprimer</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="muted" style="margin-top: 10px;">
-      Astuce : pour valider PJLink, regardez le dernier payload (metrics) et cherchez <b>pjlink_ok</b> / <b>lamp_hours</b> / <b>power_state</b>.
-    </div>
   </div>
 
-  <script>
-    // Affiche les champs SNMP/PJLink selon le driver sélectionné
-    (function() {
-      const driverSelect = document.getElementById('driver-select');
-      const snmpFields = document.getElementById('snmp-fields');
-      const pjlinkFields = document.getElementById('pjlink-fields');
+  <div class="card">
+    <h2>📡 Collecte</h2>
+    <p class="muted">
+      État :
+      {% if running %}
+        <span class="badge ok">EN COURS</span>
+      {% else %}
+        <span class="badge ko">ARRÊTÉ</span>
+      {% endif %}
+    </p>
 
-      function refresh() {
-        const v = (driverSelect.value || '').toLowerCase();
-        snmpFields.style.display = (v === 'snmp') ? 'block' : 'none';
-        pjlinkFields.style.display = (v === 'pjlink') ? 'block' : 'none';
-      }
+    <p class="muted">Prochain envoi : {{ status.next_collect_in_s or "—" }} s</p>
+    <p class="muted">Dernier cycle : {{ status.last_run_at or "—" }}</p>
 
-      driverSelect.addEventListener('change', refresh);
-      refresh();
-    })();
-  </script>
+    <form method="post" action="/collector/{{ 'stop' if running else 'start' }}">
+      <button class="{{ 'danger' if running else '' }}">
+        {{ "Arrêter" if running else "Démarrer" }}
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<!-- ================= DEVICES ================= -->
+<div class="card">
+  <h2>🖥️ Équipements surveillés</h2>
+
+  <form method="post" action="/devices/add">
+    <div class="grid">
+
+      <div>
+        <label>IP</label>
+        <input name="ip" required>
+      </div>
+
+      <div>
+        <label>Nom</label>
+        <input name="name">
+      </div>
+
+      <div>
+        <label>Bâtiment</label>
+        <input name="building">
+      </div>
+
+      <div>
+        <label>Salle</label>
+        <input name="room">
+      </div>
+
+      <div>
+        <label>Driver</label>
+        <select name="driver">
+          <option value="ping">ping</option>
+          <option value="snmp">snmp</option>
+          <option value="pjlink">pjlink</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Critique (jamais off)</label>
+        <input type="checkbox" name="critical">
+      </div>
+
+      <div>
+        <label>Heure ON (HH:MM)</label>
+        <input name="expected_on">
+      </div>
+
+      <div>
+        <label>Heure OFF (HH:MM)</label>
+        <input name="expected_off">
+      </div>
+
+    </div>
+
+    <button type="submit">Ajouter l’équipement</button>
+  </form>
+
+  <br>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>IP</th>
+        <th>Emplacement</th>
+        <th>Driver</th>
+        <th>Politique</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in cfg.devices %}
+      <tr>
+        <td><strong>{{ d.name or "—" }}</strong></td>
+        <td><code>{{ d.ip }}</code></td>
+        <td class="muted">{{ d.building }} / {{ d.room }}</td>
+        <td>{{ d.driver }}</td>
+        <td class="muted">
+          {% if d.critical %}Critique{% else %}Standard{% endif %}
+          {% if d.expected_on %}<br>ON {{ d.expected_on }} → {{ d.expected_off }}{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/devices/delete">
+            <input type="hidden" name="ip" value="{{ d.ip }}">
+            <button class="danger">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
 </body>
 </html>
