@@ -243,7 +243,7 @@ def ingest(
         _safe_setattr(dev, "building", incoming_building)
         _safe_setattr(dev, "room", incoming_room)
 
-        # metrics : si colonne présente -> set. Sinon -> on les ignore (mais on ne casse pas).
+        # metrics : si colonne présente -> set. Sinon -> ignore (sans casser).
         if hasattr(dev, "metrics"):
             _safe_setattr(dev, "metrics", incoming_metrics)
 
@@ -253,7 +253,6 @@ def ingest(
                 _safe_setattr(dev, "verdict", incoming_verdict)
             else:
                 if hasattr(dev, "metrics"):
-                    # enrichit les metrics en place
                     m = _as_dict(_safe_getattr(dev, "metrics", {}) or {})
                     m["verdict"] = incoming_verdict
                     _safe_setattr(dev, "metrics", m)
@@ -293,7 +292,11 @@ def list_devices(db: Session = Depends(get_db)):
                 "verdict": (_safe_getattr(d, "verdict", None) or metrics.get("verdict")),
                 "metrics": metrics,
                 "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-                "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
+                "last_ok_at": (
+                    _safe_getattr(d, "last_ok_at", None).isoformat()
+                    if _safe_getattr(d, "last_ok_at", None)
+                    else None
+                ),
             }
         )
     return out
@@ -320,8 +323,64 @@ def device_detail(device_id: int, db: Session = Depends(get_db)):
         "verdict": (_safe_getattr(d, "verdict", None) or metrics.get("verdict")),
         "metrics": metrics,
         "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-        "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
+        "last_ok_at": (
+            _safe_getattr(d, "last_ok_at", None).isoformat()
+            if _safe_getattr(d, "last_ok_at", None)
+            else None
+        ),
     }
+
+
+# ------------------------------------------------------------
+# UI : Dashboard
+# ------------------------------------------------------------
+@app.get("/ui/dashboard", response_class=HTMLResponse)
+def ui_dashboard(request: Request, db: Session = Depends(get_db)):
+    sites = db.query(Site).order_by(Site.id.asc()).all()
+    devices = db.query(Device).all()
+
+    total_sites = len(sites)
+    total_devices = len(devices)
+
+    offline_devices = 0
+    unknown_devices = 0
+    for d in devices:
+        st = (d.status or "unknown").strip().lower()
+        if st == "offline":
+            offline_devices += 1
+        elif st not in {"online", "offline"}:
+            unknown_devices += 1
+
+    site_cards: List[Dict[str, Any]] = []
+    for s in sites:
+        s_devices = [d for d in devices if d.site_id == s.id]
+        s_offline = 0
+        for d in s_devices:
+            if (d.status or "").strip().lower() == "offline":
+                s_offline += 1
+
+        site_cards.append(
+            {
+                "id": s.id,
+                "name": s.name,
+                "device_count": len(s_devices),
+                "offline_count": s_offline,
+                # MVP: pas de modèle "contact" pour l’instant
+                "has_contact": False,
+            }
+        )
+
+    kpis = {
+        "total_sites": total_sites,
+        "total_devices": total_devices,
+        "offline_devices": offline_devices,
+        "unknown_devices": unknown_devices,
+    }
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {"request": request, "kpis": kpis, "site_cards": site_cards},
+    )
 
 
 # ------------------------------------------------------------
@@ -386,7 +445,11 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
             "detail": d.detail,
             "verdict": verdict,
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-            "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
+            "last_ok_at": (
+                _safe_getattr(d, "last_ok_at", None).isoformat()
+                if _safe_getattr(d, "last_ok_at", None)
+                else None
+            ),
             "metrics": m_view,
         }
 
@@ -429,15 +492,14 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
         "detail": d.detail,
         "verdict": verdict,
         "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-        "last_ok_at": (_safe_getattr(d, "last_ok_at", None).isoformat() if _safe_getattr(d, "last_ok_at", None) else None),
+        "last_ok_at": (
+            _safe_getattr(d, "last_ok_at", None).isoformat()
+            if _safe_getattr(d, "last_ok_at", None)
+            else None
+        ),
     }
 
     return templates.TemplateResponse(
         "device_detail.html",
-        {
-            "request": request,
-            "device": device_view,
-            "metrics": m_view,
-            "metrics_json": metrics_json,
-        },
+        {"request": request, "device": device_view, "metrics": m_view, "metrics_json": metrics_json},
     )
