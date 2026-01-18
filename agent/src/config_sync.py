@@ -175,10 +175,31 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
         print(f"   New hash: {backend_hash[:8]}...")
 
         # Construire la nouvelle config locale
+        # Préserver backend_url locale si elle est valide, sinon reconstruire depuis base_url
+        current_backend_url = cfg.get("backend_url", "").strip()
+        current_api_url = cfg.get("api_url", "").strip()
+
+        # Utiliser l'URL locale si elle est valide (pas CHANGE_ME, pas example.com, pas localhost/backend)
+        if current_backend_url and \
+           "CHANGE_ME" not in current_backend_url and \
+           "example.com" not in current_backend_url and \
+           "localhost" not in current_backend_url and \
+           "backend:" not in current_backend_url:
+            backend_url_to_save = current_backend_url
+        elif current_api_url and \
+             "CHANGE_ME" not in current_api_url and \
+             "example.com" not in current_api_url and \
+             "localhost" not in current_api_url and \
+             "backend:" not in current_api_url:
+            backend_url_to_save = current_api_url
+        else:
+            # Fallback : reconstruire depuis base_url (qui a servi pour la sync)
+            backend_url_to_save = f"{base_url}/ingest"
+
         new_config = {
             "site_name": backend_config.get("site_name", cfg.get("site_name", "")),
             "site_token": site_token,
-            "backend_url": api_url,  # Always save as "backend_url" (normalized)
+            "backend_url": backend_url_to_save,  # Preserve valid local URL or reconstruct
             "policy": {
                 "timezone": backend_config.get("timezone", "Europe/Paris"),
                 "doubt_after_days": backend_config.get("doubt_after_days", 2),
