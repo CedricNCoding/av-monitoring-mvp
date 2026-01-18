@@ -1,0 +1,14 @@
+# Configuration file for avmonitoring-agent service
+# This file is sourced by systemd before starting the service
+
+# Python path (required for imports)
+PYTHONPATH=/opt/avmonitoring-agent
+
+# Configuration file path
+AGENT_CONFIG=/etc/avmonitoring/config.json
+
+# Config sync interval (in minutes, default: 5)
+CONFIG_SYNC_INTERVAL_MIN=5
+
+# Log level (DEBUG, INFO, WARNING, ERROR)
+# LOG_LEVEL=INFO
