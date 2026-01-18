@@ -115,16 +115,17 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
     Returns:
         True si la config a été mise à jour, False sinon.
     """
-    api_url = (cfg.get("api_url") or "").strip()
+    # Support both "backend_url" (new) and "api_url" (legacy) for backward compatibility
+    api_url = (cfg.get("backend_url") or cfg.get("api_url") or "").strip()
     site_token = (cfg.get("site_token") or "").strip()
 
     if not api_url or not site_token:
         _set_sync_status(
             last_sync_at=_iso(_now_utc()),
             last_sync_ok=False,
-            last_sync_error="missing_api_url_or_site_token",
+            last_sync_error="missing_backend_url_or_site_token",
         )
-        print("⚠️  Config sync skipped: missing api_url or site_token")
+        print("⚠️  Config sync skipped: missing backend_url or site_token")
         return False
 
     # Construire l'URL de l'endpoint /config/<token>
@@ -169,7 +170,7 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
         new_config = {
             "site_name": backend_config.get("site_name", cfg.get("site_name", "")),
             "site_token": site_token,
-            "api_url": api_url,
+            "backend_url": api_url,  # Always save as "backend_url" (normalized)
             "policy": {
                 "timezone": backend_config.get("timezone", "Europe/Paris"),
                 "doubt_after_days": backend_config.get("doubt_after_days", 2),

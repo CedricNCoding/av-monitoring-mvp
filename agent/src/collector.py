@@ -233,7 +233,8 @@ def _send_to_backend(cfg: Dict[str, Any], devices_payload: Dict[str, Any]) -> No
     Envoi POST vers backend ingest.
     Met à jour _last_status en fonction du résultat.
     """
-    api_url = (cfg.get("api_url") or "").strip()
+    # Support both "backend_url" (new) and "api_url" (legacy) for backward compatibility
+    api_url = (cfg.get("backend_url") or cfg.get("api_url") or "").strip()
     site_name = (cfg.get("site_name") or "").strip()
     site_token = (cfg.get("site_token") or "").strip()
 
@@ -241,7 +242,7 @@ def _send_to_backend(cfg: Dict[str, Any], devices_payload: Dict[str, Any]) -> No
         _set_status(
             last_send_at=_iso(_now_utc()),
             last_send_ok=False,
-            last_send_error="missing_api_url_or_site_credentials",
+            last_send_error="missing_backend_url_or_site_credentials",
         )
         return
 

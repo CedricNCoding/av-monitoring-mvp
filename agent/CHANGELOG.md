@@ -5,6 +5,18 @@ All notable changes to the AV Monitoring Agent will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2024-01-18
+
+### Fixed
+- 🔥 **BUG CRITIQUE** : Le collector et config_sync ne fonctionnaient pas avec `backend_url`
+  - Le code cherchait `api_url` mais la configuration utilisait `backend_url`
+  - Résultat : Aucune collecte, équipements restant offline
+  - Correction : Support des deux formats (`backend_url` et `api_url`) pour backward compatibility
+  - Fichiers modifiés : [src/collector.py:237](src/collector.py#L237), [src/config_sync.py:119](src/config_sync.py#L119)
+  - Voir [HOTFIX-1.1.1.md](HOTFIX-1.1.1.md) pour les détails du déploiement
+
+---
+
 ## [1.1.0] - 2024-01-18
 
 ### Added
