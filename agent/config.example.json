@@ -1,0 +1,12 @@
+{
+  "site_name": "site-demo",
+  "site_token": "CHANGE_ME_AFTER_INSTALL",
+  "backend_url": "https://avmonitoring.example.com",
+  "timezone": "Europe/Paris",
+  "doubt_after_days": 2,
+  "reporting": {
+    "ok_interval_s": 300,
+    "ko_interval_s": 60
+  },
+  "devices": []
+}

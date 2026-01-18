@@ -1,0 +1,27 @@
+[Unit]
+Description=AV Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=avmonitoring
+Group=avmonitoring
+WorkingDirectory=/opt/avmonitoring-agent
+Environment="CONFIG_PATH=/etc/avmonitoring/config.json"
+ExecStart=/opt/avmonitoring-agent/venv/bin/python3 -m src.webapp
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=avmonitoring-agent
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/avmonitoring /var/log/avmonitoring
+
+[Install]
+WantedBy=multi-user.target
