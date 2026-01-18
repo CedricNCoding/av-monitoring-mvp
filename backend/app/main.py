@@ -644,6 +644,132 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------
+# Device management (CRUD)
+# ------------------------------------------------------------
+@app.post("/ui/devices/create")
+def create_device(
+    site_id: int = Form(...),
+    ip: str = Form(...),
+    name: str = Form(""),
+    building: str = Form(""),
+    floor: str = Form(""),
+    room: str = Form(""),
+    device_type: str = Form("unknown"),
+    driver: str = Form("ping"),
+    # SNMP
+    snmp_community: str = Form("public"),
+    snmp_port: int = Form(161),
+    snmp_timeout_s: int = Form(1),
+    snmp_retries: int = Form(1),
+    # PJLink
+    pjlink_password: str = Form(""),
+    pjlink_port: int = Form(4352),
+    pjlink_timeout_s: int = Form(2),
+    # Expectations
+    always_on: str = Form(""),
+    alert_after_s: int = Form(300),
+    sched_days: str = Form("mon,tue,wed,thu,fri"),
+    sched_start: str = Form("07:30"),
+    sched_end: str = Form("19:00"),
+    sched_timezone: str = Form("Europe/Paris"),
+    db: Session = Depends(get_db),
+):
+    """Crée un nouvel équipement."""
+    ip = (ip or "").strip()
+    if not ip:
+        return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+    # Vérifier si l'IP existe déjà pour ce site
+    existing = db.query(Device).filter(Device.site_id == site_id, Device.ip == ip).first()
+    if existing:
+        return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+    driver = (driver or "ping").strip().lower()
+
+    # Driver configs
+    snmp_block = {}
+    if driver == "snmp":
+        snmp_block = {
+            "community": (snmp_community or "public").strip(),
+            "port": max(1, snmp_port),
+            "timeout_s": max(1, snmp_timeout_s),
+            "retries": max(0, snmp_retries),
+        }
+
+    pj_block = {}
+    if driver == "pjlink":
+        pj_block = {
+            "password": (pjlink_password or "").strip(),
+            "port": max(1, pjlink_port),
+            "timeout_s": max(1, pjlink_timeout_s),
+        }
+
+    driver_config = {}
+    if snmp_block:
+        driver_config["snmp"] = snmp_block
+    if pj_block:
+        driver_config["pjlink"] = pj_block
+
+    # Expectations
+    ao = (always_on or "").strip().lower() in {"1", "true", "on", "yes"}
+    a_s = max(15, alert_after_s)
+
+    days = []
+    for part in (sched_days or "").split(","):
+        p = part.strip().lower()
+        if p in {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}:
+            days.append(p)
+
+    schedule = {}
+    if days and (sched_start or "").strip() and (sched_end or "").strip():
+        schedule = {
+            "timezone": (sched_timezone or "Europe/Paris").strip() or "Europe/Paris",
+            "rules": [{"days": days, "start": (sched_start or "").strip(), "end": (sched_end or "").strip()}],
+        }
+
+    expectations = {
+        "always_on": ao,
+        "alert_after_s": a_s,
+        "schedule": schedule,
+    }
+
+    # Créer l'équipement
+    new_device = Device(
+        site_id=site_id,
+        ip=ip,
+        name=(name or "").strip(),
+        building=(building or "").strip(),
+        floor=(floor or "").strip(),
+        room=(room or "").strip(),
+        device_type=(device_type or "unknown").strip(),
+        driver=driver,
+        driver_config=driver_config,
+        expectations=expectations,
+        status="unknown",
+    )
+
+    db.add(new_device)
+    db.commit()
+
+    return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+
+@app.post("/ui/devices/{device_id}/delete")
+def delete_device(device_id: int, db: Session = Depends(get_db)):
+    """Supprime un équipement."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    site_id = device.site_id
+
+    db.delete(device)
+    db.commit()
+
+    return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+
+# ------------------------------------------------------------
 # API JSON
 # ------------------------------------------------------------
 @app.get("/devices")

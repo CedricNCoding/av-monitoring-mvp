@@ -32,6 +32,13 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    labels:
+      # Traefik routing for /config endpoint
+      - "traefik.enable=true"
+      - "traefik.http.routers.avmvp-config.rule=Host(`avmonitoring.rouni.eu`) && PathPrefix(`/config`)"
+      - "traefik.http.routers.avmvp-config.entrypoints=websecure"
+      - "traefik.http.routers.avmvp-config.tls.certresolver=letsencrypt"
+      - "traefik.http.services.avmvp-backend.loadbalancer.server.port=8000"
 
   agent:
     build: ./agent

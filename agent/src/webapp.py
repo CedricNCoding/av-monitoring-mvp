@@ -428,6 +428,20 @@ def stop_collector_route():
     return RedirectResponse("/", status_code=303)
 
 
+@app.post("/sync/trigger")
+def trigger_sync():
+    """Force une synchronisation immédiate de la configuration."""
+    from src.config_sync import sync_config_from_backend
+
+    cfg = load_config(CONFIG_PATH)
+    try:
+        sync_config_from_backend(cfg)
+    except Exception as e:
+        print(f"⚠️  Manual sync failed: {e}")
+
+    return RedirectResponse("/", status_code=303)
+
+
 # ---------------------------------------------------------------------
 # Startup: démarrer le thread de synchronisation config
 # ---------------------------------------------------------------------

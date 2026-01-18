@@ -138,7 +138,12 @@
 
       {# Config Sync Status #}
       <div style="border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px;">
-        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-muted);">🔄 Sync Backend</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-weight: 600; font-size: 13px; color: var(--text-muted);">🔄 Sync Backend</div>
+          <form method="post" action="/sync/trigger" style="margin: 0;">
+            <button type="submit" class="secondary" style="padding: 4px 10px; font-size: 11px;">⚡ Forcer la sync</button>
+          </form>
+        </div>
         <div class="muted">Dernière sync :
           {% if sync_status is defined and sync_status.last_sync_ok is defined and sync_status.last_sync_ok is not none %}
             <span style="color: {{ 'var(--success)' if sync_status.last_sync_ok else 'var(--danger)' }}">

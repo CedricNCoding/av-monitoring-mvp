@@ -253,6 +253,110 @@
       </div>
     </div>
 
+    <!-- Formulaire d'ajout d'équipement -->
+    <div style="background: #f0fdf4; padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--success); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <details>
+        <summary style="font-weight: 700; font-size: 14px; color: var(--success); cursor: pointer; user-select: none;">➕ Ajouter un nouvel équipement</summary>
+        <form method="post" action="/ui/devices/create" style="margin-top: 16px;">
+          <input type="hidden" name="site_id" value="{{ site.id }}">
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">IP *</label>
+              <input type="text" name="ip" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Nom</label>
+              <input type="text" name="name" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Bâtiment</label>
+              <input type="text" name="building" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Étage</label>
+              <input type="text" name="floor" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Salle</label>
+              <input type="text" name="room" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Type</label>
+              <input type="text" name="device_type" value="unknown" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Driver</label>
+              <select name="driver" id="create-driver" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                <option value="ping">ping</option>
+                <option value="snmp">snmp</option>
+                <option value="pjlink">pjlink</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- SNMP Config (hidden by default) -->
+          <div id="create-snmp-config" style="display: none; background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);">
+            <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted);">Configuration SNMP</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Community</label>
+                <input type="text" name="snmp_community" value="public" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Port</label>
+                <input type="number" name="snmp_port" value="161" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Timeout (s)</label>
+                <input type="number" name="snmp_timeout_s" value="1" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Retries</label>
+                <input type="number" name="snmp_retries" value="1" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+            </div>
+          </div>
+
+          <!-- PJLink Config (hidden by default) -->
+          <div id="create-pjlink-config" style="display: none; background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);">
+            <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted);">Configuration PJLink</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Password</label>
+                <input type="text" name="pjlink_password" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Port</label>
+                <input type="number" name="pjlink_port" value="4352" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Timeout (s)</label>
+                <input type="number" name="pjlink_timeout_s" value="2" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" style="padding: 10px 20px; font-size: 14px; background: var(--success); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">✅ Créer l'équipement</button>
+        </form>
+      </details>
+    </div>
+
+    <script>
+      // Toggle driver-specific config sections
+      document.getElementById('create-driver').addEventListener('change', function() {
+        const driver = this.value;
+        document.getElementById('create-snmp-config').style.display = driver === 'snmp' ? 'block' : 'none';
+        document.getElementById('create-pjlink-config').style.display = driver === 'pjlink' ? 'block' : 'none';
+      });
+    </script>
+
     {% for building, rooms in grouped.items() %}
       <div class="section section-group" data-building="{{ building }}">
         <h2>Bâtiment : {{ building }}</h2>
@@ -274,6 +378,7 @@
                   <th>Uptime</th>
                   <th>sysDescr</th>
                   <th>Last seen</th>
+                  <th style="text-align:right;">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -337,6 +442,12 @@
                   </td>
 
                   <td class="muted mono">{{ d.last_seen or "—" }}</td>
+
+                  <td style="text-align:right;">
+                    <form method="post" action="/ui/devices/{{ d.id }}/delete" style="display:inline;" onsubmit="return confirm('Supprimer cet équipement ?');">
+                      <button type="submit" class="btn-danger" style="padding: 4px 10px; font-size: 12px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">🗑️ Suppr.</button>
+                    </form>
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
