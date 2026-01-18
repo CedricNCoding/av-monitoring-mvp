@@ -40,6 +40,13 @@
     .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
     .badge.running { background: #dcfce7; color: #166534; }
     .badge.stopped { background: #fee2e2; color: #991b1b; }
+    .badge.online { background: #dcfce7; color: #166534; }
+    .badge.offline { background: #fee2e2; color: #991b1b; }
+    .badge.unknown { background: #f3f4f6; color: #6b7280; }
+    .badge.ok { background: #dcfce7; color: #166534; }
+    .badge.fault { background: #fee2e2; color: #991b1b; }
+    .badge.doubt { background: #fef3c7; color: #92400e; }
+    .badge.expected_off { background: #f3f4f6; color: #6b7280; }
 
     table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
     th { text-align: left; background: #f8fafc; padding: 10px; border-bottom: 2px solid var(--border); color: var(--text-muted); }
@@ -292,11 +299,14 @@
             <th>Salle</th>
             <th>Type</th>
             <th>Driver</th>
+            <th>Status</th>
+            <th>Verdict</th>
             <th style="text-align:right;">Action</th>
           </tr>
         </thead>
         <tbody>
           {% for d in cfg.devices %}
+          {% set result = last_results.get(d.ip, {}) %}
           <tr>
             <td><strong>{{ d.name or 'Sans nom' }}</strong></td>
             <td><code>{{ d.ip }}</code></td>
@@ -305,9 +315,28 @@
             <td class="muted">{{ d.room or '—' }}</td>
             <td>{{ d.type }}</td>
             <td><span class="pill">{{ d.driver }}</span></td>
+            <td>
+              {% if result and result.status %}
+                <span class="badge {{ result.status }}">{{ result.status }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if result and result.verdict %}
+                <span class="badge {{ result.verdict }}">{{ result.verdict }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
             <td style="text-align:right;">
               <div style="display: flex; gap: 4px; justify-content: flex-end;">
-                <button onclick="editDevice('{{ d.ip }}', {{ d|tojson }})" class="secondary" style="padding: 4px 8px; font-size: 11px;">Modifier</button>
+                <button
+                  class="secondary edit-btn"
+                  style="padding: 4px 8px; font-size: 11px;"
+                  data-device='{{ d|tojson }}'
+                  data-ip="{{ d.ip }}"
+                >Modifier</button>
                 <form method="post" action="/devices/delete" style="margin: 0;">
                   <input type="hidden" name="ip" value="{{ d.ip }}">
                   <button type="submit" class="danger" style="padding: 4px 8px; font-size: 11px;">Supprimer</button>
@@ -318,7 +347,7 @@
           {% endfor %}
           {% if (cfg.devices|length) == 0 %}
           <tr>
-            <td colspan="8" class="muted">Aucun équipement configuré.</td>
+            <td colspan="10" class="muted">Aucun équipement configuré.</td>
           </tr>
           {% endif %}
         </tbody>
@@ -354,6 +383,23 @@
     }
 
     editDriverSelect.addEventListener('change', refreshEditDriverFields);
+
+    // Attacher les event listeners aux boutons de modification
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const deviceJson = this.getAttribute('data-device');
+          const originalIp = this.getAttribute('data-ip');
+          try {
+            const device = JSON.parse(deviceJson);
+            editDevice(originalIp, device);
+          } catch (e) {
+            console.error('Error parsing device JSON:', e);
+            alert('Erreur lors de la récupération des données de l\'équipement');
+          }
+        });
+      });
+    });
 
     function editDevice(originalIp, device) {
       // Afficher le formulaire d'édition

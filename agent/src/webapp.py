@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from src.storage import load_config, save_config
-from src.collector import run_forever, get_last_status
+from src.collector import run_forever, get_last_status, get_last_results
 
 CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
 
@@ -119,6 +119,9 @@ def index(request: Request):
     raw = get_last_status()
     last_status = _normalize_last_status(raw)
 
+    # Récupérer les derniers résultats de collecte
+    last_results = get_last_results()
+
     # compat template: certains index.html utilisent "status" au lieu de "last_status"
     context = {
         "request": request,
@@ -126,6 +129,7 @@ def index(request: Request):
         "running": collector_running(),
         "last_status": last_status,
         "status": last_status,  # alias
+        "last_results": last_results,  # résultats par IP
     }
 
     return templates.TemplateResponse("index.html", context)

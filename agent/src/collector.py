@@ -36,6 +36,9 @@ _last_status: Dict[str, Any] = {
     "next_send_in_s": None,       # int|None
 }
 
+# Derniers résultats de collecte par IP
+_last_results: Dict[str, Dict[str, Any]] = {}
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -49,6 +52,12 @@ def get_last_status() -> Dict[str, Any]:
     # copie défensive
     with _lock:
         return dict(_last_status)
+
+
+def get_last_results() -> Dict[str, Dict[str, Any]]:
+    """Retourne les derniers résultats de collecte par IP."""
+    with _lock:
+        return dict(_last_results)
 
 
 def _set_status(**kwargs: Any) -> None:
@@ -197,20 +206,24 @@ def _collect_once(cfg: Dict[str, Any]) -> Dict[str, Any]:
         if verdict == "fault":
             any_fault = True
 
-        out_devices.append(
-            {
-                "ip": ip,
-                "name": name,
-                "building": building,
-                "room": room,
-                "type": dtype,
-                "driver": driver,
-                "status": status,
-                "detail": detail,
-                "metrics": metrics,
-                "verdict": verdict,
-            }
-        )
+        device_result = {
+            "ip": ip,
+            "name": name,
+            "building": building,
+            "room": room,
+            "type": dtype,
+            "driver": driver,
+            "status": status,
+            "detail": detail,
+            "metrics": metrics,
+            "verdict": verdict,
+        }
+
+        out_devices.append(device_result)
+
+        # Stocker le résultat pour l'UI
+        with _lock:
+            _last_results[ip] = device_result
 
     return {"devices": out_devices, "any_fault": any_fault}
 
