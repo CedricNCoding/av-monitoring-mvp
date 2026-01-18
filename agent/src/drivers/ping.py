@@ -1,132 +1,121 @@
 # agent/src/drivers/ping.py
 from __future__ import annotations
 
-import platform
+import re
 import subprocess
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 
 
-def _ping_cmd(ip: str, timeout_s: int = 1, count: int = 1) -> list[str]:
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_int(x: Any, default: int) -> int:
+    try:
+        return int(str(x).strip())
+    except Exception:
+        return default
+
+
+def _parse_rtt_ms(ping_output: str) -> Optional[float]:
     """
-    Construit une commande ping portable (Linux/Windows/macOS).
-    Dans notre contexte Docker Linux, on sera sur la branche Linux,
-    mais c'est propre de rester tolérant.
+    Tente d'extraire un RTT moyen depuis la sortie de ping.
+    Supporte principalement la sortie Linux.
+    Exemple: "rtt min/avg/max/mdev = 0.123/0.456/0.789/0.012 ms"
     """
-    system = (platform.system() or "").lower()
+    if not ping_output:
+        return None
 
-    # Linux/macOS: -c <count> ; timeout: Linux (-W seconds), macOS (-W milliseconds)
-    if "windows" in system:
-        # Windows: -n count ; -w timeout(ms)
-        return ["ping", "-n", str(count), "-w", str(max(1, int(timeout_s * 1000))), ip]
-
-    if "darwin" in system:
-        # macOS: -W timeout en ms, -c count
-        return ["ping", "-c", str(count), "-W", str(max(1, int(timeout_s * 1000))), ip]
-
-    # Linux (default): -c count, -W timeout en secondes (per reply)
-    return ["ping", "-c", str(count), "-W", str(max(1, int(timeout_s))), ip]
+    m = re.search(r"=\s*([\d\.]+)/([\d\.]+)/([\d\.]+)/", ping_output)
+    if m:
+        try:
+            return float(m.group(2))
+        except Exception:
+            return None
+    return None
 
 
-def collect(device: Dict[str, Any]) -> Dict[str, Any]:
+def _run_ping(ip: str, timeout_s: int = 1, count: int = 1) -> Tuple[bool, str, Optional[float]]:
     """
-    Driver PING - convention d'entrypoint
+    Ping Linux:
+    -c <count> : nombre de paquets
+    -W <timeout> : timeout en secondes (pour chaque paquet)
+    """
+    timeout_s = max(1, int(timeout_s))
+    count = max(1, int(count))
 
-    Le registry appelle collect(device_cfg) et attend un dict normalisé:
+    # IMPORTANT: commande ping dans container linux
+    cmd = ["ping", "-c", str(count), "-W", str(timeout_s), ip]
+
+    try:
+        p = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s * count + 2,
+        )
+        out = (p.stdout or "") + "\n" + (p.stderr or "")
+        ok = (p.returncode == 0)
+        rtt = _parse_rtt_ms(out) if ok else None
+        return ok, out.strip(), rtt
+    except subprocess.TimeoutExpired:
+        return False, "ping timeout", None
+    except FileNotFoundError:
+        return False, "ping binary not found", None
+    except Exception as e:
+        return False, f"ping error: {e}", None
+
+
+def probe(device: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Entrypoint standard attendu par drivers/registry.py
+
+    Input: device dict (au minimum {"ip": "..."}).
+    Output: dict standard:
       {
         "status": "online"|"offline"|"unknown",
-        "detail": str,
-        "metrics": dict
+        "detail": "<string|None>",
+        "metrics": { ... }
       }
-
-    Paramètres (dans device config):
-      - ip: str (obligatoire)
-      - timeout_s: int (optionnel, défaut 1)
-      - count: int (optionnel, défaut 1)
     """
     ip = (device.get("ip") or "").strip()
     if not ip:
-        return {"status": "unknown", "detail": "missing_ip", "metrics": {}}
+        return {"status": "unknown", "detail": "missing ip", "metrics": {"ts": _now_utc_iso()}}
 
-    # tolérance: timeout peut être au niveau device["timeout_s"] ou device["ping"]["timeout_s"]
-    timeout_s: int = 1
-    count: int = 1
+    # Options (si présentes dans config)
+    # - ping: {"timeout_s": 1, "count": 1}
+    ping_cfg = device.get("ping") if isinstance(device.get("ping"), dict) else {}
+    timeout_s = _safe_int(ping_cfg.get("timeout_s"), 1)
+    count = _safe_int(ping_cfg.get("count"), 1)
 
-    try:
-        timeout_s = int(device.get("timeout_s") or 1)
-    except Exception:
-        timeout_s = 1
+    ok, raw, rtt_ms = _run_ping(ip, timeout_s=timeout_s, count=count)
 
-    ping_cfg = device.get("ping") or {}
-    if isinstance(ping_cfg, dict):
-        try:
-            timeout_s = int(ping_cfg.get("timeout_s") or timeout_s)
-        except Exception:
-            pass
-        try:
-            count = int(ping_cfg.get("count") or count)
-        except Exception:
-            pass
+    metrics: Dict[str, Any] = {
+        "ts": _now_utc_iso(),
+        "ping_ok": ok,
+        "ping_timeout_s": timeout_s,
+        "ping_count": count,
+    }
+    if rtt_ms is not None:
+        metrics["ping_rtt_avg_ms"] = rtt_ms
 
-    timeout_s = max(1, timeout_s)
-    count = max(1, min(5, count))  # garde-fou
+    if ok:
+        return {"status": "online", "detail": None, "metrics": metrics}
 
-    cmd = _ping_cmd(ip, timeout_s=timeout_s, count=count)
+    # Limiter la taille du détail pour éviter d'exploser l'UI/DB
+    detail = raw.strip()
+    if len(detail) > 280:
+        detail = detail[:279] + "…"
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=max(2, timeout_s + 2),
-        )
+    return {"status": "offline", "detail": detail or "ping failed", "metrics": metrics}
 
-        ok = proc.returncode == 0
-        out = (proc.stdout or "").strip()
-        err = (proc.stderr or "").strip()
 
-        if ok:
-            return {
-                "status": "online",
-                "detail": "ping_ok",
-                "metrics": {
-                    "ping_cmd": " ".join(cmd),
-                    "ping_out": out[:800],  # évite d'exploser la taille
-                },
-            }
-
-        # offline: on garde un diagnostic court
-        detail = "ping_failed"
-        if err:
-            detail = f"ping_failed: {err[:200]}"
-        elif out:
-            detail = f"ping_failed: {out.splitlines()[-1][:200]}"
-
-        return {
-            "status": "offline",
-            "detail": detail,
-            "metrics": {
-                "ping_cmd": " ".join(cmd),
-                "ping_out": out[:800],
-                "ping_err": err[:400],
-            },
-        }
-
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "offline",
-            "detail": f"ping_timeout_{timeout_s}s",
-            "metrics": {"ping_cmd": " ".join(cmd)},
-        }
-    except FileNotFoundError:
-        return {
-            "status": "unknown",
-            "detail": "ping_binary_not_found",
-            "metrics": {},
-        }
-    except Exception as e:
-        return {
-            "status": "unknown",
-            "detail": f"ping_error: {e.__class__.__name__}",
-            "metrics": {},
-        }
+# -------------------------------------------------------------------
+# Compatibilité backward
+# -------------------------------------------------------------------
+def collect(device: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Alias historique si d'autres morceaux de code utilisent collect().
+    """
+    return probe(device)
