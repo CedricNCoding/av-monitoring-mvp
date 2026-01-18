@@ -756,13 +756,17 @@ def create_device(
 
 @app.post("/ui/devices/{device_id}/delete")
 def delete_device(device_id: int, db: Session = Depends(get_db)):
-    """Supprime un équipement."""
+    """Supprime un équipement et ses événements associés."""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
     site_id = device.site_id
 
+    # Supprimer d'abord tous les événements associés à cet équipement
+    db.query(DeviceEvent).filter(DeviceEvent.device_id == device_id).delete()
+
+    # Puis supprimer l'équipement
     db.delete(device)
     db.commit()
 
