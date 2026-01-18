@@ -226,14 +226,42 @@
       <span class="pill"><span class="dot unknown"></span> unknown</span>
     </div>
 
+    <!-- Filtres -->
+    <div style="background: #ffffff; padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-weight: 700; font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Filtrer par :</span>
+
+        <div style="margin: 0;">
+          <select id="filter-building" style="padding: 8px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600;">
+            <option value="">Tous les bâtiments</option>
+          </select>
+        </div>
+
+        <div style="margin: 0;">
+          <select id="filter-floor" style="padding: 8px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600;">
+            <option value="">Tous les étages</option>
+          </select>
+        </div>
+
+        <div style="margin: 0;">
+          <select id="filter-room" style="padding: 8px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600;">
+            <option value="">Toutes les salles</option>
+          </select>
+        </div>
+
+        <button type="button" onclick="clearFilters()" style="padding: 8px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600; background: #64748b; color: white; cursor: pointer;">Effacer</button>
+      </div>
+    </div>
+
     {% for building, rooms in grouped.items() %}
-      <div class="section">
+      <div class="section section-group" data-building="{{ building }}">
         <h2>Bâtiment : {{ building }}</h2>
 
         {% for room, devices in rooms.items() %}
-          <h3>{{ room }} <span class="muted">({{ devices|length }} équipement(s))</span></h3>
+          <div class="room-group" data-building="{{ building }}" data-room="{{ room }}">
+            <h3>{{ room }} <span class="muted">({{ devices|length }} équipement(s))</span></h3>
 
-          <div class="table-container">
+            <div class="table-container">
             <table>
               <thead>
                 <tr>
@@ -252,7 +280,11 @@
                 {% for d in devices %}
                 {% set m = d.metrics or {} %}
                 {% set v = (d.verdict or '')|lower %}
-                <tr>
+                <tr class="device-row"
+                    data-building="{{ d.building or '' }}"
+                    data-floor="{{ d.floor or '' }}"
+                    data-room="{{ d.room or '' }}"
+                >
                   <td><a href="/ui/devices/{{ d.id }}" class="id-link">#{{ d.id }}</a></td>
 
                   <td>
@@ -310,9 +342,226 @@
               </tbody>
             </table>
           </div>
+          </div>
         {% endfor %}
       </div>
     {% endfor %}
   </div>
+
+  <script>
+    // ===================================================================
+    // Système de filtrage par localisation
+    // ===================================================================
+    function populateFilters() {
+      const rows = document.querySelectorAll('.device-row');
+      const buildings = new Set();
+      const floors = new Set();
+      const rooms = new Set();
+
+      rows.forEach(row => {
+        const building = row.getAttribute('data-building');
+        const floor = row.getAttribute('data-floor');
+        const room = row.getAttribute('data-room');
+
+        if (building && building.trim()) buildings.add(building.trim());
+        if (floor && floor.trim()) floors.add(floor.trim());
+        if (room && room.trim()) rooms.add(room.trim());
+      });
+
+      // Trier les bâtiments et salles alphabétiquement
+      const buildingsSorted = Array.from(buildings).sort();
+      const roomsSorted = Array.from(rooms).sort();
+
+      // Trier les étages avec normalize_floor_key
+      const floorsSorted = Array.from(floors).sort((a, b) => {
+        return compareFloors(a, b);
+      });
+
+      // Remplir les selects
+      const filterBuilding = document.getElementById('filter-building');
+      const filterFloor = document.getElementById('filter-floor');
+      const filterRoom = document.getElementById('filter-room');
+
+      // Clear existing options (sauf "Tous...")
+      filterBuilding.innerHTML = '<option value="">Tous les bâtiments</option>';
+      filterFloor.innerHTML = '<option value="">Tous les étages</option>';
+      filterRoom.innerHTML = '<option value="">Toutes les salles</option>';
+
+      buildingsSorted.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = b;
+        filterBuilding.appendChild(opt);
+      });
+
+      floorsSorted.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        filterFloor.appendChild(opt);
+      });
+
+      roomsSorted.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        filterRoom.appendChild(opt);
+      });
+    }
+
+    function compareFloors(a, b) {
+      // Implémentation JS de normalize_floor_key pour tri des étages
+      const keyA = normalizeFloorKey(a);
+      const keyB = normalizeFloorKey(b);
+
+      // Compare priority
+      if (keyA.priority !== keyB.priority) {
+        return keyA.priority - keyB.priority;
+      }
+
+      // Compare numeric value
+      if (keyA.numeric !== keyB.numeric) {
+        return keyA.numeric - keyB.numeric;
+      }
+
+      // Compare text
+      return keyA.text.localeCompare(keyB.text);
+    }
+
+    function normalizeFloorKey(floor) {
+      if (!floor) {
+        return { priority: 0, numeric: 999999, text: '' };
+      }
+
+      const normalized = floor.trim().toLowerCase();
+
+      // RDC, RC, Rez, Ground => 0
+      if (['rdc', 'rc', 'rez', 'ground', 'g', '0'].includes(normalized)) {
+        return { priority: 0, numeric: 0, text: '' };
+      }
+
+      // Sous-sol patterns
+      const basementPatterns = [
+        /^ss[-]?(\d+)$/,
+        /^s[-](\d+)$/,
+        /^[-](\d+)$/,
+        /^sous[-\s]?sol[-\s]?(\d+)?$/
+      ];
+
+      for (const pattern of basementPatterns) {
+        const match = normalized.match(pattern);
+        if (match) {
+          const num = match[1] ? parseInt(match[1]) : 1;
+          return { priority: 0, numeric: -num, text: '' };
+        }
+      }
+
+      // Simple numeric
+      if (/^\d+$/.test(normalized)) {
+        return { priority: 0, numeric: parseInt(normalized), text: '' };
+      }
+
+      // Ordinal: 1er, 2ème, 3e
+      const ordinalMatch = normalized.match(/^(\d+)(?:er|ème|e)?$/);
+      if (ordinalMatch) {
+        return { priority: 0, numeric: parseInt(ordinalMatch[1]), text: '' };
+      }
+
+      // Texte => après les numériques
+      return { priority: 1, numeric: 0, text: normalized };
+    }
+
+    function applyFilters() {
+      const selectedBuilding = document.getElementById('filter-building').value.trim().toLowerCase();
+      const selectedFloor = document.getElementById('filter-floor').value.trim().toLowerCase();
+      const selectedRoom = document.getElementById('filter-room').value.trim().toLowerCase();
+
+      // Filtrer les lignes de devices
+      const rows = document.querySelectorAll('.device-row');
+      rows.forEach(row => {
+        const building = row.getAttribute('data-building').trim().toLowerCase();
+        const floor = row.getAttribute('data-floor').trim().toLowerCase();
+        const room = row.getAttribute('data-room').trim().toLowerCase();
+
+        let visible = true;
+
+        if (selectedBuilding && building !== selectedBuilding) {
+          visible = false;
+        }
+
+        if (selectedFloor && floor !== selectedFloor) {
+          visible = false;
+        }
+
+        if (selectedRoom && room !== selectedRoom) {
+          visible = false;
+        }
+
+        row.style.display = visible ? '' : 'none';
+      });
+
+      // Filtrer les sections et groupes de salles
+      const roomGroups = document.querySelectorAll('.room-group');
+      roomGroups.forEach(group => {
+        const groupBuilding = group.getAttribute('data-building').trim().toLowerCase();
+        const groupRoom = group.getAttribute('data-room').trim().toLowerCase();
+
+        let groupVisible = true;
+
+        if (selectedBuilding && groupBuilding !== selectedBuilding) {
+          groupVisible = false;
+        }
+
+        if (selectedRoom && groupRoom !== selectedRoom) {
+          groupVisible = false;
+        }
+
+        // Si on filtre par étage, vérifier s'il reste des lignes visibles dans ce groupe
+        if (selectedFloor && groupVisible) {
+          const visibleRowsInGroup = group.querySelectorAll('.device-row:not([style*="display: none"])');
+          groupVisible = visibleRowsInGroup.length > 0;
+        }
+
+        group.style.display = groupVisible ? '' : 'none';
+      });
+
+      // Filtrer les sections de bâtiments
+      const sections = document.querySelectorAll('.section-group');
+      sections.forEach(section => {
+        const sectionBuilding = section.getAttribute('data-building').trim().toLowerCase();
+
+        let sectionVisible = true;
+
+        if (selectedBuilding && sectionBuilding !== selectedBuilding) {
+          sectionVisible = false;
+        }
+
+        // Vérifier s'il reste des groupes visibles dans cette section
+        const visibleGroupsInSection = section.querySelectorAll('.room-group:not([style*="display: none"])');
+        if (visibleGroupsInSection.length === 0) {
+          sectionVisible = false;
+        }
+
+        section.style.display = sectionVisible ? '' : 'none';
+      });
+    }
+
+    function clearFilters() {
+      document.getElementById('filter-building').value = '';
+      document.getElementById('filter-floor').value = '';
+      document.getElementById('filter-room').value = '';
+      applyFilters();
+    }
+
+    // Initialisation au chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+      populateFilters();
+
+      // Attacher les event listeners aux filtres
+      document.getElementById('filter-building').addEventListener('change', applyFilters);
+      document.getElementById('filter-floor').addEventListener('change', applyFilters);
+      document.getElementById('filter-room').addEventListener('change', applyFilters);
+    });
+  </script>
 </body>
 </html>
