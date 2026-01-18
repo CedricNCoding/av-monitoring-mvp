@@ -179,9 +179,10 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
         # Créer une config minimale
         cat > "$CONFIG_DIR/config.json" << 'EOF'
 {
-  "site_name": "site-demo",
-  "site_token": "CHANGE_ME_AFTER_INSTALL",
-  "backend_url": "https://avmonitoring.example.com",
+  "_comment": "IMPORTANT: Configurez site_token, backend_url et site_name avant de démarrer",
+  "site_name": "CHANGE_ME",
+  "site_token": "CHANGE_ME",
+  "backend_url": "https://CHANGE_ME/ingest",
   "timezone": "Europe/Paris",
   "doubt_after_days": 2,
   "reporting": {
