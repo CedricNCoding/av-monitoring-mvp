@@ -234,7 +234,15 @@ def _send_to_backend(cfg: Dict[str, Any], devices_payload: Dict[str, Any]) -> No
     Met à jour _last_status en fonction du résultat.
     """
     # Support both "backend_url" (new) and "api_url" (legacy) for backward compatibility
-    api_url = (cfg.get("backend_url") or cfg.get("api_url") or "").strip()
+    # If backend_url contains CHANGE_ME or example.com, fallback to api_url
+    backend_url = (cfg.get("backend_url") or "").strip()
+    api_url_legacy = (cfg.get("api_url") or "").strip()
+
+    if backend_url and "CHANGE_ME" not in backend_url and "example.com" not in backend_url:
+        api_url = backend_url
+    else:
+        api_url = api_url_legacy
+
     site_name = (cfg.get("site_name") or "").strip()
     site_token = (cfg.get("site_token") or "").strip()
 

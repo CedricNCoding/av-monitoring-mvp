@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - 🔧 **Config par défaut plus claire** : Utilise `"CHANGE_ME"` au lieu d'URLs invalides
   - `config.example.json` et `install.sh` créent maintenant une config avec `"backend_url": "https://CHANGE_ME/ingest"`
-  - Le collector détecte automatiquement les valeurs non configurées (`CHANGE_ME`, `example.com`)
-  - Messages d'erreur explicites : `backend_url_not_configured`, `site_token_not_configured`, etc.
+  - Le collector et config_sync ignorent automatiquement `backend_url` si elle contient `CHANGE_ME` ou `example.com`
+  - Fallback intelligent vers `api_url` si `backend_url` n'est pas configurée
 
 ---
 
