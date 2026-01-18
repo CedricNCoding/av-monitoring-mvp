@@ -1,6 +1,7 @@
 # agent/src/collector.py
 from __future__ import annotations
 
+import inspect
 import os
 import threading
 import time
@@ -11,7 +12,11 @@ import requests
 
 from src.storage import load_config
 from src.drivers.registry import run_driver
-from src.scheduling import device_policy_from_config, classify_observation, compute_next_collect_interval_s
+from src.scheduling import (
+    classify_observation,
+    compute_next_collect_interval_s,
+    device_policy_from_config,
+)
 
 CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
 
@@ -27,6 +32,8 @@ _last_status: Dict[str, Any] = {
     "last_send_ok": None,         # bool|None
     "last_send_error": None,      # str|None
     "next_collect_in_s": None,    # int|None
+    # backward compat (anciennes clés possibles côté template/UI)
+    "next_send_in_s": None,       # int|None
 }
 
 
@@ -47,6 +54,45 @@ def get_last_status() -> Dict[str, Any]:
 def _set_status(**kwargs: Any) -> None:
     with _lock:
         _last_status.update(kwargs)
+        # backward compat : si next_collect_in_s est set, on set aussi next_send_in_s
+        if "next_collect_in_s" in kwargs and "next_send_in_s" not in kwargs:
+            _last_status["next_send_in_s"] = kwargs.get("next_collect_in_s")
+
+
+# -------------------------------------------------------------------
+# Compat helper: classify_observation signature
+# -------------------------------------------------------------------
+def _classify_with_compat(**kwargs: Any) -> str:
+    """
+    Appelle classify_observation() en restant compatible avec plusieurs signatures historiques.
+
+    Nouveau (attendu):
+      classify_observation(now_utc, tz_name, policy, observed_status, last_ok_utc, doubt_after_days)
+
+    Ancien possible:
+      - timezone=... ou tz=...
+      - ou pas de param de timezone du tout (fallback interne)
+    """
+    sig = inspect.signature(classify_observation)
+    params = set(sig.parameters.keys())
+
+    call_kwargs = dict(kwargs)
+
+    # tz_name -> timezone / tz / drop
+    if "tz_name" in call_kwargs and "tz_name" not in params:
+        tz = call_kwargs.pop("tz_name")
+        if "timezone" in params:
+            call_kwargs["timezone"] = tz
+        elif "tz" in params:
+            call_kwargs["tz"] = tz
+        # sinon on ne passe rien (fallback dans scheduling)
+
+    # nettoyage kwargs non supportés
+    for k in list(call_kwargs.keys()):
+        if k not in params:
+            call_kwargs.pop(k, None)
+
+    return classify_observation(**call_kwargs)
 
 
 # -------------------------------------------------------------------
@@ -67,7 +113,7 @@ def _collect_once(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     tz_name = (cfg.get("timezone") or "Europe/Paris").strip() or "Europe/Paris"
 
-    # param "doute" côté agent (fallback) ; idéalement tu le rendras paramétrable backend plus tard.
+    # param "doute" côté agent (fallback)
     try:
         doubt_after_days = int(cfg.get("doubt_after_days") or 2)
     except Exception:
@@ -93,19 +139,37 @@ def _collect_once(cfg: Dict[str, Any]) -> Dict[str, Any]:
         dtype = (dev_cfg.get("type") or dev_cfg.get("device_type") or "unknown").strip() or "unknown"
         driver = (dev_cfg.get("driver") or "ping").strip().lower() or "ping"
 
-        # 1) run driver
-        obs = run_driver(driver, dev_cfg)  # normalisé par registry
+        # 1) run driver (ne doit jamais faire tomber toute la boucle)
+        obs: Dict[str, Any]
+        try:
+            obs = run_driver(driver, dev_cfg)  # normalisé par registry
+            if not isinstance(obs, dict):
+                obs = {"status": "unknown", "detail": "driver_return_not_dict", "metrics": {}}
+        except Exception as e:
+            obs = {
+                "status": "unknown",
+                "detail": f"{e.__class__.__name__}: {e}",
+                "metrics": {"driver_error": True},
+            }
+
         status = (obs.get("status") or "unknown").strip().lower()
         detail = (obs.get("detail") or "").strip() or None
         metrics = obs.get("metrics") if isinstance(obs.get("metrics"), dict) else {}
 
-        # 2) verdict (anti-faux positifs)
-        # last_ok_utc: on peut le stocker dans metrics (approche simple, sans DB locale)
-        # - si online => on met à jour "last_ok_utc"
-        # - si offline => on réutilise le précédent si présent
+        # 2) Verdict (anti-faux positifs) + last_ok_utc
         last_ok_utc: Optional[datetime] = None
-        prev_last_ok = metrics.get("_last_ok_utc") or dev_cfg.get("_last_ok_utc")  # tolérant
-        if isinstance(prev_last_ok, str):
+
+        # On supporte plusieurs emplacements possibles:
+        # - metrics["_last_ok_utc"] (ce que tu utilises)
+        # - dev_cfg["_last_ok_utc"] (si déjà stocké côté config)
+        # - dev_cfg["last_ok_utc"]  (au cas où)
+        prev_last_ok = (
+            metrics.get("_last_ok_utc")
+            or dev_cfg.get("_last_ok_utc")
+            or dev_cfg.get("last_ok_utc")
+        )
+
+        if isinstance(prev_last_ok, str) and prev_last_ok.strip():
             try:
                 last_ok_utc = datetime.fromisoformat(prev_last_ok.replace("Z", "+00:00"))
             except Exception:
@@ -113,10 +177,15 @@ def _collect_once(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
         if status == "online":
             last_ok_utc = now
+            # stocke dans metrics (remonte au backend si tu veux)
             metrics["_last_ok_utc"] = now.isoformat()
+            # stocke dans dev_cfg en mémoire (utile pendant le run)
+            dev_cfg["_last_ok_utc"] = now.isoformat()
 
         policy = device_policy_from_config(dev_cfg)
-        verdict = classify_observation(
+
+        # compat signature scheduling
+        verdict = _classify_with_compat(
             now_utc=now,
             tz_name=tz_name,
             policy=policy,
@@ -202,7 +271,7 @@ def run_forever(stop_flag: Dict[str, bool]) -> None:
     """
     while True:
         if stop_flag.get("stop"):
-            _set_status(next_collect_in_s=None)
+            _set_status(next_collect_in_s=None, next_send_in_s=None)
             time.sleep(0.5)
             continue
 
@@ -216,13 +285,19 @@ def run_forever(stop_flag: Dict[str, bool]) -> None:
 
         # interval adaptatif
         reporting = cfg.get("reporting") or {}
-        ok_interval_s = reporting.get("ok_interval_s") or 300
-        ko_interval_s = reporting.get("ko_interval_s") or 60
+        try:
+            ok_interval_s = int(reporting.get("ok_interval_s") or 300)
+        except Exception:
+            ok_interval_s = 300
+        try:
+            ko_interval_s = int(reporting.get("ko_interval_s") or 60)
+        except Exception:
+            ko_interval_s = 60
 
         next_interval = compute_next_collect_interval_s(
             any_fault=bool(collected.get("any_fault")),
-            ok_interval_s=int(ok_interval_s),
-            ko_interval_s=int(ko_interval_s),
+            ok_interval_s=ok_interval_s,
+            ko_interval_s=ko_interval_s,
         )
 
         # expose UI "prochain cycle"
@@ -236,7 +311,9 @@ def run_forever(stop_flag: Dict[str, bool]) -> None:
         while remaining > 0:
             if stop_flag.get("stop"):
                 break
-            # on décrémente et met à jour l'UI (approx seconde)
             time.sleep(1)
             remaining -= 1
             _set_status(next_collect_in_s=remaining)
+
+        # si on a interrompu via stop, on repasse dans la boucle (qui mettra next_collect_in_s=None)
+        continue
