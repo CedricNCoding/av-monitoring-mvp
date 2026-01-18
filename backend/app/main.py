@@ -2,18 +2,21 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
 
 from .db import SessionLocal, engine
-from .models import Base, Site, Device
+from .models import Base, Site, Device, DeviceEvent, DeviceAlert
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -108,6 +111,135 @@ def _count_statuses(devices: List[Device]) -> Dict[str, int]:
     return {"online": online, "offline": offline, "unknown": unknown, "total": len(devices)}
 
 
+def _count_verdicts(devices: List[Device]) -> Dict[str, int]:
+    """
+    Comptage des verdicts pour KPI.
+    """
+    fault = 0
+    doubt = 0
+    expected_off = 0
+    ok = 0
+
+    for d in devices:
+        verdict = (d.verdict or _as_dict(d.metrics).get("verdict") or "").strip().lower()
+        if verdict == "fault":
+            fault += 1
+        elif verdict == "doubt":
+            doubt += 1
+        elif verdict == "expected_off":
+            expected_off += 1
+        elif verdict == "ok":
+            ok += 1
+
+    return {"fault": fault, "doubt": doubt, "expected_off": expected_off, "ok": ok}
+
+
+# ------------------------------------------------------------
+# Event & Alert logic
+# ------------------------------------------------------------
+def record_event_and_alerts(
+    db: Session,
+    site: Site,
+    device: Device,
+    incoming_data: Dict[str, Any],
+    now: datetime
+) -> None:
+    """
+    Option A: écrire un event uniquement si (status, verdict, detail) change OU si last event > 60 minutes.
+    Ouvrir/fermer/mettre à jour les alertes selon le verdict/status.
+    """
+    try:
+        # Récupérer le dernier event pour ce device
+        last_event = (
+            db.query(DeviceEvent)
+            .filter(DeviceEvent.device_id == device.id)
+            .order_by(DeviceEvent.created_at.desc())
+            .first()
+        )
+
+        # Déterminer si on doit écrire un nouvel event
+        should_write_event = False
+        if last_event is None:
+            should_write_event = True
+        else:
+            # Vérifier si les valeurs ont changé
+            status_changed = last_event.status != device.status
+            verdict_changed = last_event.verdict != device.verdict
+            detail_changed = last_event.detail != device.detail
+
+            # Vérifier si le dernier event date de plus de 60 minutes
+            time_threshold = 60 * 60  # 60 minutes en secondes
+            time_diff = (now - last_event.created_at).total_seconds()
+            time_exceeded = time_diff > time_threshold
+
+            should_write_event = status_changed or verdict_changed or detail_changed or time_exceeded
+
+        # Écrire l'event si nécessaire
+        if should_write_event:
+            event = DeviceEvent(
+                device_id=device.id,
+                site_id=site.id,
+                ip=device.ip,
+                name=device.name,
+                building=device.building,
+                room=device.room,
+                device_type=device.device_type,
+                driver=device.driver,
+                status=device.status,
+                verdict=device.verdict,
+                detail=device.detail,
+                metrics_json=_as_dict(device.metrics),
+                created_at=now,
+            )
+            db.add(event)
+
+        # Gestion des alertes
+        # Récupérer l'alerte active (non fermée) pour ce device
+        active_alert = (
+            db.query(DeviceAlert)
+            .filter(DeviceAlert.device_id == device.id)
+            .filter(DeviceAlert.closed_at.is_(None))
+            .first()
+        )
+
+        # Déterminer si on doit ouvrir une alerte (verdict == "fault" ou status == "offline" si pas de verdict)
+        is_fault = device.verdict == "fault" if device.verdict else device.status == "offline"
+
+        if is_fault:
+            # Ouvrir ou mettre à jour l'alerte
+            if active_alert is None:
+                # Créer une nouvelle alerte
+                severity = "critical" if device.verdict == "fault" else "warning"
+                alert = DeviceAlert(
+                    site_id=site.id,
+                    device_id=device.id,
+                    severity=severity,
+                    opened_at=now,
+                    last_seen_at=now,
+                    status=device.status,
+                    verdict=device.verdict,
+                    detail=device.detail,
+                )
+                db.add(alert)
+            else:
+                # Mettre à jour l'alerte existante
+                active_alert.last_seen_at = now
+                active_alert.status = device.status
+                active_alert.verdict = device.verdict
+                active_alert.detail = device.detail
+        else:
+            # Fermer l'alerte si elle existe
+            if active_alert is not None:
+                active_alert.closed_at = now
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        # Log l'erreur mais ne pas faire échouer l'ingest
+        print(f"Error recording event/alert for device {device.ip}: {e}")
+
+
 # ------------------------------------------------------------
 # DB dependency
 # ------------------------------------------------------------
@@ -123,6 +255,9 @@ def get_db():
 # App + DB init retry
 # ------------------------------------------------------------
 app = FastAPI(title="AV Monitoring MVP Backend")
+
+# Add session middleware for one-time token display
+app.add_middleware(SessionMiddleware, secret_key=secrets.token_urlsafe(32))
 
 
 def _init_db_with_retry(max_wait_s: int = 25) -> None:
@@ -144,6 +279,69 @@ def _init_db_with_retry(max_wait_s: int = 25) -> None:
 
 
 _init_db_with_retry()
+
+
+# ------------------------------------------------------------
+# Purge system
+# ------------------------------------------------------------
+def purge_old_data() -> None:
+    """
+    Supprime les DeviceEvent et DeviceAlert closed plus vieux que EVENT_RETENTION_DAYS.
+    """
+    try:
+        retention_days = int(os.getenv("EVENT_RETENTION_DAYS", "30"))
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+        db = SessionLocal()
+        try:
+            # Supprimer les anciens events
+            deleted_events = db.query(DeviceEvent).filter(
+                DeviceEvent.created_at < cutoff_date
+            ).delete(synchronize_session=False)
+
+            # Supprimer les alertes fermées anciennes
+            deleted_alerts = db.query(DeviceAlert).filter(
+                DeviceAlert.closed_at.isnot(None),
+                DeviceAlert.closed_at < cutoff_date
+            ).delete(synchronize_session=False)
+
+            db.commit()
+            print(f"Purge completed: deleted {deleted_events} events and {deleted_alerts} closed alerts older than {retention_days} days")
+        except Exception as e:
+            db.rollback()
+            print(f"Error during purge: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Error in purge_old_data: {e}")
+
+
+def run_purge_loop() -> None:
+    """
+    Boucle de purge qui s'exécute toutes les PURGE_INTERVAL_HOURS heures.
+    """
+    try:
+        interval_hours = int(os.getenv("PURGE_INTERVAL_HOURS", "24"))
+        interval_seconds = interval_hours * 3600
+
+        while True:
+            time.sleep(interval_seconds)
+            purge_old_data()
+    except Exception as e:
+        print(f"Error in purge loop: {e}")
+
+
+# Démarrer le thread de purge en daemon
+purge_thread = threading.Thread(target=run_purge_loop, daemon=True)
+purge_thread.start()
+
+# Exécuter une purge au démarrage (après un court délai pour laisser le temps à la DB de se stabiliser)
+def initial_purge():
+    time.sleep(10)
+    purge_old_data()
+
+initial_purge_thread = threading.Thread(target=initial_purge, daemon=True)
+initial_purge_thread.start()
 
 
 # ------------------------------------------------------------
@@ -197,6 +395,48 @@ def create_site(name: str, token: str | None = None, db: Session = Depends(get_d
     db.refresh(s)
 
     return {"created": True, "site_id": s.id, "site": s.name, "token": s.token}
+
+
+# ------------------------------------------------------------
+# Admin API: delete site
+# ------------------------------------------------------------
+@app.post("/admin/delete-site")
+def delete_site(site_id: int, db: Session = Depends(get_db)):
+    """
+    Supprime un site et tous ses équipements associés.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Supprimer tous les équipements du site
+    db.query(Device).filter(Device.site_id == site_id).delete()
+
+    # Supprimer le site
+    db.delete(site)
+    db.commit()
+
+    return {"ok": True, "message": f"Site {site.name} deleted"}
+
+
+# ------------------------------------------------------------
+# Admin API: renew site token
+# ------------------------------------------------------------
+@app.post("/admin/renew-token")
+def renew_site_token(site_id: int, db: Session = Depends(get_db)):
+    """
+    Génère un nouveau token pour un site existant.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Générer un nouveau token
+    new_token = secrets.token_urlsafe(32)
+    site.token = new_token
+    db.commit()
+
+    return {"ok": True, "site_id": site.id, "site": site.name, "token": new_token}
 
 
 # ------------------------------------------------------------
@@ -274,32 +514,32 @@ def ingest(
         dev.status = incoming_status
         dev.detail = incoming_detail
         dev.last_seen = now
+        dev.building = incoming_building
+        dev.room = incoming_room
 
-        # Champs optionnels selon ton models.py / migrations
-        _safe_setattr(dev, "building", incoming_building)
-        _safe_setattr(dev, "room", incoming_room)
+        # metrics
+        dev.metrics = incoming_metrics
 
-        # metrics : si colonne présente -> set. Sinon -> on les ignore (mais on ne casse pas).
-        if hasattr(dev, "metrics"):
-            _safe_setattr(dev, "metrics", incoming_metrics)
-
-        # verdict : si colonne présente -> set; sinon, on le met dans metrics["verdict"] si possible
+        # verdict
         if incoming_verdict:
-            if hasattr(dev, "verdict"):
-                _safe_setattr(dev, "verdict", incoming_verdict)
-            else:
-                if hasattr(dev, "metrics"):
-                    m = _as_dict(_safe_getattr(dev, "metrics", {}) or {})
-                    m["verdict"] = incoming_verdict
-                    _safe_setattr(dev, "metrics", m)
+            dev.verdict = incoming_verdict
+        else:
+            # Si pas de verdict dans le payload, on peut le récupérer depuis metrics
+            dev.verdict = incoming_metrics.get("verdict", None)
 
         # last_ok_at : on garde la dernière fois où l'équipement est vu online
         if incoming_status.strip().lower() == "online":
-            _safe_setattr(dev, "last_ok_at", now)
+            dev.last_ok_at = now
+
+        # Commit le device avant de créer les events
+        db.commit()
+        db.refresh(dev)
+
+        # Enregistrer l'event et gérer les alertes
+        record_event_and_alerts(db, site, dev, d, now)
 
         upserted += 1
 
-    db.commit()
     return {"ok": True, "upserted": upserted}
 
 
@@ -377,12 +617,16 @@ def ui_dashboard(request: Request, db: Session = Depends(get_db)):
 
     # KPIs globaux
     st = _count_statuses(devices)
+    vd = _count_verdicts(devices)
     kpis = {
         "total_sites": len(sites),
         "total_devices": st["total"],
         "offline_devices": st["offline"],
         "unknown_devices": st["unknown"],
         "online_devices": st["online"],
+        "faults": vd["fault"],
+        "doubts": vd["doubt"],
+        "expected_off": vd["expected_off"],
     }
 
     # Cards par site (pour dashboard.html)
@@ -390,6 +634,7 @@ def ui_dashboard(request: Request, db: Session = Depends(get_db)):
     for s in sites:
         site_devs = [d for d in devices if d.site_id == s.id]
         st_site = _count_statuses(site_devs)
+        vd_site = _count_verdicts(site_devs)
 
         site_cards.append(
             {
@@ -397,15 +642,47 @@ def ui_dashboard(request: Request, db: Session = Depends(get_db)):
                 "name": s.name,
                 "device_count": st_site["total"],
                 "offline_count": st_site["offline"],
-                # "has_contact" est prévu dans votre template, mais pas encore modélisé.
-                # On reste explicite et non bloquant.
-                "has_contact": bool(_safe_getattr(s, "contact", None) or _safe_getattr(s, "email", None)),
+                "unknown_count": st_site["unknown"],
+                "fault_count": vd_site["fault"],
+                "has_contact": bool(
+                    s.contact_email or s.contact_phone or s.contact_first_name
+                ),
             }
         )
 
+    # Récupérer les 20 derniers événements
+    recent_events_raw = (
+        db.query(DeviceEvent)
+        .order_by(DeviceEvent.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    # Préparer les événements pour l'affichage
+    recent_events = []
+    for ev in recent_events_raw:
+        # Récupérer le site pour avoir le nom
+        site = db.query(Site).filter(Site.id == ev.site_id).first()
+        site_name = site.name if site else f"Site #{ev.site_id}"
+
+        recent_events.append({
+            "id": ev.id,
+            "site_name": site_name,
+            "site_id": ev.site_id,
+            "device_name": ev.name or ev.ip,
+            "device_id": ev.device_id,
+            "ip": ev.ip,
+            "building": ev.building or "—",
+            "room": ev.room or "—",
+            "status": ev.status,
+            "verdict": ev.verdict or "—",
+            "detail": ev.detail or "",
+            "created_at": ev.created_at.isoformat() if ev.created_at else None,
+        })
+
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "kpis": kpis, "site_cards": site_cards},
+        {"request": request, "kpis": kpis, "site_cards": site_cards, "recent_events": recent_events},
     )
 
 
@@ -421,10 +698,105 @@ def ui_agents(request: Request, db: Session = Depends(get_db)):
         count = db.query(Device).filter(Device.site_id == s.id).count()
         view.append({"id": s.id, "name": s.name, "device_count": count})
 
+    # Récupérer le token one-time s'il existe dans la session
+    new_token_data = request.session.pop("new_token", None)
+
     return templates.TemplateResponse(
         "agents.html",
-        {"request": request, "sites": view},
+        {"request": request, "sites": view, "new_token": new_token_data},
     )
+
+
+# ------------------------------------------------------------
+# UI : Create Site
+# ------------------------------------------------------------
+@app.post("/ui/sites/create")
+def ui_create_site(
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Crée un nouveau site via l'interface web et stocke le token dans la session.
+    """
+    name = (name or "").strip()
+    if not name:
+        return RedirectResponse("/ui/agents", status_code=303)
+
+    # Vérifier si le site existe déjà
+    existing = db.query(Site).filter(Site.name == name).first()
+    if existing:
+        return RedirectResponse("/ui/agents", status_code=303)
+
+    # Créer le site avec un token généré
+    token = secrets.token_urlsafe(32)
+    site = Site(name=name, token=token)
+    db.add(site)
+    db.commit()
+    db.refresh(site)
+
+    # Stocker le token dans la session pour l'afficher une seule fois
+    request.session["new_token"] = {
+        "site_id": site.id,
+        "site_name": site.name,
+        "token": token
+    }
+
+    return RedirectResponse("/ui/agents", status_code=303)
+
+
+# ------------------------------------------------------------
+# UI : Delete Site
+# ------------------------------------------------------------
+@app.post("/ui/sites/delete")
+def ui_delete_site(
+    site_id: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Supprime un site via l'interface web.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if site:
+        # Supprimer tous les équipements du site
+        db.query(Device).filter(Device.site_id == site_id).delete()
+        # Supprimer le site
+        db.delete(site)
+        db.commit()
+
+    return RedirectResponse("/ui/agents", status_code=303)
+
+
+# ------------------------------------------------------------
+# UI : Renew Token
+# ------------------------------------------------------------
+@app.post("/ui/sites/renew-token")
+def ui_renew_token(
+    request: Request,
+    site_id: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Renouvelle le token d'un site via l'interface web.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        return RedirectResponse("/ui/agents", status_code=303)
+
+    # Générer un nouveau token
+    new_token = secrets.token_urlsafe(32)
+    site.token = new_token
+    db.commit()
+
+    # Stocker le token dans la session pour l'afficher une seule fois
+    request.session["new_token"] = {
+        "site_id": site.id,
+        "site_name": site.name,
+        "token": new_token,
+        "renewed": True
+    }
+
+    return RedirectResponse("/ui/agents", status_code=303)
 
 
 # ------------------------------------------------------------
@@ -440,29 +812,16 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
 
     # KPIs site (utiles pour un header / résumé)
     st_site = _count_statuses(rows)
-
-    # Verdicts (si présents)
-    fault = 0
-    expected_off = 0
-    doubt = 0
-    for d in rows:
-        m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
-        verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip().lower()
-        if verdict == "fault":
-            fault += 1
-        elif verdict == "expected_off":
-            expected_off += 1
-        elif verdict == "doubt":
-            doubt += 1
+    vd_site = _count_verdicts(rows)
 
     kpis = {
         "total_devices": st_site["total"],
         "online_devices": st_site["online"],
         "offline_devices": st_site["offline"],
         "unknown_devices": st_site["unknown"],
-        "fault_devices": fault,
-        "expected_off_devices": expected_off,
-        "doubt_devices": doubt,
+        "fault_devices": vd_site["fault"],
+        "expected_off_devices": vd_site["expected_off"],
+        "doubt_devices": vd_site["doubt"],
     }
 
     def _key(d: Device):
@@ -475,11 +834,11 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
     grouped: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 
     for d in rows_sorted:
-        building = (_safe_getattr(d, "building", "") or "").strip() or "—"
-        room = (_safe_getattr(d, "room", "") or "").strip() or "—"
+        building = (d.building or "").strip() or "—"
+        room = (d.room or "").strip() or "—"
 
-        m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
-        verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip()
+        m = _as_dict(d.metrics or {})
+        verdict = (d.verdict or m.get("verdict") or "").strip()
 
         m_view = dict(m)
         m_view["uptime_human"] = _uptime_centis_to_human(m.get("sys_uptime"))
@@ -498,11 +857,7 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
             "detail": d.detail,
             "verdict": verdict,
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-            "last_ok_at": (
-                _safe_getattr(d, "last_ok_at", None).isoformat()
-                if _safe_getattr(d, "last_ok_at", None)
-                else None
-            ),
+            "last_ok_at": d.last_ok_at.isoformat() if d.last_ok_at else None,
             "metrics": m_view,
         }
 
@@ -528,8 +883,8 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
     if not d:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
-    verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip()
+    m = _as_dict(d.metrics or {})
+    verdict = (d.verdict or m.get("verdict") or "").strip()
 
     m_view = dict(m)
     m_view["uptime_human"] = _uptime_centis_to_human(m.get("sys_uptime"))
@@ -544,17 +899,13 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
         "ip": d.ip,
         "device_type": d.device_type,
         "driver": d.driver,
-        "building": (_safe_getattr(d, "building", "") or "").strip(),
-        "room": (_safe_getattr(d, "room", "") or "").strip(),
+        "building": (d.building or "").strip(),
+        "room": (d.room or "").strip(),
         "status": d.status,
         "detail": d.detail,
         "verdict": verdict,
         "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-        "last_ok_at": (
-            _safe_getattr(d, "last_ok_at", None).isoformat()
-            if _safe_getattr(d, "last_ok_at", None)
-            else None
-        ),
+        "last_ok_at": d.last_ok_at.isoformat() if d.last_ok_at else None,
     }
 
     return templates.TemplateResponse(

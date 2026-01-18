@@ -209,6 +209,97 @@
       text-decoration: none;
     }
 
+    .btn-danger {
+      background-color: #dc2626;
+    }
+
+    .btn-danger:hover {
+      background-color: #b91c1c;
+    }
+
+    .btn-warning {
+      background-color: #f59e0b;
+    }
+
+    .btn-warning:hover {
+      background-color: #d97706;
+    }
+
+    .btn-small {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+
+    /* Token alert */
+    .token-alert {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border: 2px solid #f59e0b;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .token-alert h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: 900;
+      color: #92400e;
+    }
+
+    .token-alert .token-box {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 13px;
+      word-break: break-all;
+      border: 1px solid #f59e0b;
+      color: #92400e;
+      font-weight: 700;
+    }
+
+    .token-alert .warning {
+      margin-top: 10px;
+      color: #92400e;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    /* Add site form */
+    .add-site-form {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .add-site-form h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .add-site-form form {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .add-site-form .form-group {
+      flex: 1;
+    }
+
+    .add-site-form label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
     /* Empty state */
     .empty {
       padding: 26px;
@@ -249,6 +340,29 @@
       </nav>
     </div>
 
+    <!-- Token Display (One-time) -->
+    {% if new_token %}
+    <div class="token-alert">
+      <h3>🔑 {{ "Token renouvelé" if new_token.renewed else "Nouveau site créé" }} : {{ new_token.site_name }}</h3>
+      <p class="muted">Voici le token d'authentification pour ce site. <strong>Copiez-le maintenant</strong>, il ne sera plus affiché.</p>
+      <div class="token-box" id="token-value">{{ new_token.token }}</div>
+      <button onclick="copyToken()" class="btn" style="margin-top: 12px;">📋 Copier le token</button>
+      <p class="warning">⚠️ Ce token ne sera affiché qu'une seule fois. Configurez votre agent avec ce token avant de quitter cette page.</p>
+    </div>
+    {% endif %}
+
+    <!-- Add Site Form -->
+    <div class="add-site-form">
+      <h3>➕ Ajouter un nouveau site</h3>
+      <form method="post" action="/ui/sites/create">
+        <div class="form-group">
+          <label>Nom du site</label>
+          <input name="name" class="input" placeholder="Ex: Bureau Paris, Site Lyon..." required>
+        </div>
+        <button type="submit" class="btn">Créer le site</button>
+      </form>
+    </div>
+
     <div class="controls">
       <input id="q" class="input" placeholder="Rechercher un site (nom)..." autocomplete="off">
       <select id="sort" class="select">
@@ -269,7 +383,7 @@
             <th>ID</th>
             <th>Nom du Site / Agent</th>
             <th>Équipements</th>
-            <th style="text-align:right;">Action</th>
+            <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
         <tbody id="tbody">
@@ -286,7 +400,17 @@
               <span class="muted" style="margin-left: 8px;">unités</span>
             </td>
             <td style="text-align:right;">
-              <a href="/ui/agents/{{ s.id }}/devices" class="btn">Explorer →</a>
+              <div style="display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap;">
+                <a href="/ui/agents/{{ s.id }}/devices" class="btn btn-small">Explorer →</a>
+                <form method="post" action="/ui/sites/renew-token" style="margin: 0;" onsubmit="return confirm('Renouveler le token de ce site ? L\'ancien token ne fonctionnera plus.');">
+                  <input type="hidden" name="site_id" value="{{ s.id }}">
+                  <button type="submit" class="btn btn-warning btn-small">🔄 Token</button>
+                </form>
+                <form method="post" action="/ui/sites/delete" style="margin: 0;" onsubmit="return confirm('Supprimer ce site et tous ses équipements ?');">
+                  <input type="hidden" name="site_id" value="{{ s.id }}">
+                  <button type="submit" class="btn btn-danger btn-small">🗑️ Suppr.</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -302,6 +426,42 @@
   </div>
 
   <script>
+    // Copy token to clipboard
+    function copyToken() {
+      const tokenValue = document.getElementById('token-value');
+      if (!tokenValue) return;
+
+      const text = tokenValue.textContent;
+
+      // Modern clipboard API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          alert('Token copié dans le presse-papiers !');
+        }).catch(() => {
+          fallbackCopy(text);
+        });
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        alert('Token copié dans le presse-papiers !');
+      } catch (err) {
+        alert('Erreur lors de la copie. Veuillez copier manuellement le token.');
+      }
+      document.body.removeChild(textarea);
+    }
+
+    // Filter and sort table
     (function () {
       const q = document.getElementById('q');
       const sort = document.getElementById('sort');

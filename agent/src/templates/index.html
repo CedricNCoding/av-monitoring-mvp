@@ -139,6 +139,7 @@
         <div class="form-group"><label>IP</label><input name="ip" placeholder="192.168.1.X" required></div>
         <div class="form-group"><label>Nom</label><input name="name"></div>
         <div class="form-group"><label>Bâtiment</label><input name="building"></div>
+        <div class="form-group"><label>Étage</label><input name="floor" placeholder="RDC, 1, 2, SS1..."></div>
         <div class="form-group"><label>Salle</label><input name="room"></div>
 
         <div class="form-group">
@@ -203,13 +204,92 @@
       <button type="submit" style="margin-top: 10px;">+ Ajouter l'équipement</button>
     </form>
 
+    <!-- Formulaire d'édition (caché par défaut) -->
+    <form id="edit-form" method="post" action="/devices/update" style="display: none; background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid var(--warning);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 style="margin: 0; font-size: 16px;">✏️ Modifier l'équipement</h3>
+        <button type="button" onclick="cancelEdit()" class="secondary" style="padding: 4px 12px;">Annuler</button>
+      </div>
+
+      <input type="hidden" name="original_ip" id="edit-original-ip">
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+        <div class="form-group"><label>IP</label><input name="ip" id="edit-ip" placeholder="192.168.1.X" required></div>
+        <div class="form-group"><label>Nom</label><input name="name" id="edit-name"></div>
+        <div class="form-group"><label>Bâtiment</label><input name="building" id="edit-building"></div>
+        <div class="form-group"><label>Étage</label><input name="floor" id="edit-floor" placeholder="RDC, 1, 2, SS1..."></div>
+        <div class="form-group"><label>Salle</label><input name="room" id="edit-room"></div>
+
+        <div class="form-group">
+          <label>Driver</label>
+          <select name="driver" id="edit-driver-select">
+            <option value="ping">ping</option>
+            <option value="snmp">snmp</option>
+            <option value="pjlink">pjlink</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- SNMP -->
+      <div id="edit-snmp-fields" style="display:none; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div class="form-group"><label>SNMP Community</label><input name="snmp_community" id="edit-snmp-community" value="public"></div>
+        <div class="form-group"><label>SNMP Port</label><input type="number" name="snmp_port" id="edit-snmp-port" value="161"></div>
+        <div class="form-group"><label>SNMP Timeout (s)</label><input type="number" name="snmp_timeout_s" id="edit-snmp-timeout" value="1"></div>
+        <div class="form-group"><label>SNMP Retries</label><input type="number" name="snmp_retries" id="edit-snmp-retries" value="1"></div>
+      </div>
+
+      <!-- PJLINK -->
+      <div id="edit-pjlink-fields" style="display:none; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div class="form-group"><label>PJLink Password</label><input name="pjlink_password" id="edit-pjlink-password" type="password" value=""></div>
+        <div class="form-group"><label>PJLink Port</label><input type="number" name="pjlink_port" id="edit-pjlink-port" value="4352"></div>
+        <div class="form-group"><label>PJLink Timeout (s)</label><input type="number" name="pjlink_timeout_s" id="edit-pjlink-timeout" value="2"></div>
+      </div>
+
+      <!-- Expectations -->
+      <div style="margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+          <div class="form-group">
+            <label>Toujours ON (critique)</label>
+            <select name="always_on" id="edit-always-on">
+              <option value="">Non</option>
+              <option value="true">Oui</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Alerte après (sec)</label>
+            <input type="number" name="alert_after_s" id="edit-alert-after" min="15" value="300">
+          </div>
+          <div class="form-group">
+            <label>Jours (mon,tue,...)</label>
+            <input name="sched_days" id="edit-sched-days" value="mon,tue,wed,thu,fri">
+          </div>
+          <div class="form-group">
+            <label>Début</label>
+            <input name="sched_start" id="edit-sched-start" value="07:30" placeholder="07:30">
+          </div>
+          <div class="form-group">
+            <label>Fin</label>
+            <input name="sched_end" id="edit-sched-end" value="19:00" placeholder="19:00">
+          </div>
+          <div class="form-group">
+            <label>Timezone</label>
+            <input name="sched_timezone" id="edit-sched-timezone" value="Europe/Paris">
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" style="margin-top: 10px;">💾 Enregistrer les modifications</button>
+    </form>
+
     <div style="overflow-x: auto;">
       <table>
         <thead>
           <tr>
             <th>Équipement</th>
             <th>IP</th>
-            <th>Emplacement</th>
+            <th>Bâtiment</th>
+            <th>Étage</th>
+            <th>Salle</th>
             <th>Type</th>
             <th>Driver</th>
             <th style="text-align:right;">Action</th>
@@ -220,20 +300,25 @@
           <tr>
             <td><strong>{{ d.name or 'Sans nom' }}</strong></td>
             <td><code>{{ d.ip }}</code></td>
-            <td class="muted">{{ d.building or '—' }} / {{ d.room or '—' }}</td>
+            <td class="muted">{{ d.building or '—' }}</td>
+            <td class="muted">{{ d.floor or '—' }}</td>
+            <td class="muted">{{ d.room or '—' }}</td>
             <td>{{ d.type }}</td>
             <td><span class="pill">{{ d.driver }}</span></td>
             <td style="text-align:right;">
-              <form method="post" action="/devices/delete">
-                <input type="hidden" name="ip" value="{{ d.ip }}">
-                <button type="submit" class="danger" style="padding: 4px 8px; font-size: 11px;">Supprimer</button>
-              </form>
+              <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                <button onclick="editDevice('{{ d.ip }}', {{ d|tojson }})" class="secondary" style="padding: 4px 8px; font-size: 11px;">Modifier</button>
+                <form method="post" action="/devices/delete" style="margin: 0;">
+                  <input type="hidden" name="ip" value="{{ d.ip }}">
+                  <button type="submit" class="danger" style="padding: 4px 8px; font-size: 11px;">Supprimer</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}
           {% if (cfg.devices|length) == 0 %}
           <tr>
-            <td colspan="6" class="muted">Aucun équipement configuré.</td>
+            <td colspan="8" class="muted">Aucun équipement configuré.</td>
           </tr>
           {% endif %}
         </tbody>
@@ -242,6 +327,7 @@
   </div>
 
   <script>
+    // Gestion du formulaire d'ajout
     const driverSelect = document.getElementById('driver-select');
     const snmpFields = document.getElementById('snmp-fields');
     const pjlinkFields = document.getElementById('pjlink-fields');
@@ -254,6 +340,76 @@
 
     driverSelect.addEventListener('change', refreshDriverFields);
     refreshDriverFields();
+
+    // Gestion du formulaire d'édition
+    const editDriverSelect = document.getElementById('edit-driver-select');
+    const editSnmpFields = document.getElementById('edit-snmp-fields');
+    const editPjlinkFields = document.getElementById('edit-pjlink-fields');
+    const editForm = document.getElementById('edit-form');
+
+    function refreshEditDriverFields() {
+      const v = editDriverSelect.value;
+      editSnmpFields.style.display = (v === 'snmp') ? 'grid' : 'none';
+      editPjlinkFields.style.display = (v === 'pjlink') ? 'grid' : 'none';
+    }
+
+    editDriverSelect.addEventListener('change', refreshEditDriverFields);
+
+    function editDevice(originalIp, device) {
+      // Afficher le formulaire d'édition
+      editForm.style.display = 'block';
+      editForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      // Remplir les champs de base
+      document.getElementById('edit-original-ip').value = originalIp;
+      document.getElementById('edit-ip').value = device.ip || '';
+      document.getElementById('edit-name').value = device.name || '';
+      document.getElementById('edit-building').value = device.building || '';
+      document.getElementById('edit-floor').value = device.floor || '';
+      document.getElementById('edit-room').value = device.room || '';
+      document.getElementById('edit-driver-select').value = device.driver || 'ping';
+
+      // Remplir les champs SNMP
+      const snmp = device.snmp || {};
+      document.getElementById('edit-snmp-community').value = snmp.community || 'public';
+      document.getElementById('edit-snmp-port').value = snmp.port || 161;
+      document.getElementById('edit-snmp-timeout').value = snmp.timeout_s || 1;
+      document.getElementById('edit-snmp-retries').value = snmp.retries || 1;
+
+      // Remplir les champs PJLink
+      const pjlink = device.pjlink || {};
+      document.getElementById('edit-pjlink-password').value = pjlink.password || '';
+      document.getElementById('edit-pjlink-port').value = pjlink.port || 4352;
+      document.getElementById('edit-pjlink-timeout').value = pjlink.timeout_s || 2;
+
+      // Remplir les expectations
+      const expectations = device.expectations || {};
+      document.getElementById('edit-always-on').value = expectations.always_on ? 'true' : '';
+      document.getElementById('edit-alert-after').value = expectations.alert_after_s || 300;
+
+      // Remplir le schedule
+      const schedule = expectations.schedule || {};
+      const rules = schedule.rules || [];
+      if (rules.length > 0) {
+        const rule = rules[0];
+        document.getElementById('edit-sched-days').value = (rule.days || []).join(',');
+        document.getElementById('edit-sched-start').value = rule.start || '07:30';
+        document.getElementById('edit-sched-end').value = rule.end || '19:00';
+        document.getElementById('edit-sched-timezone').value = schedule.timezone || 'Europe/Paris';
+      } else {
+        document.getElementById('edit-sched-days').value = 'mon,tue,wed,thu,fri';
+        document.getElementById('edit-sched-start').value = '07:30';
+        document.getElementById('edit-sched-end').value = '19:00';
+        document.getElementById('edit-sched-timezone').value = schedule.timezone || 'Europe/Paris';
+      }
+
+      // Rafraîchir l'affichage des champs driver
+      refreshEditDriverFields();
+    }
+
+    function cancelEdit() {
+      editForm.style.display = 'none';
+    }
   </script>
 
 </body>

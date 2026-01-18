@@ -158,6 +158,7 @@ def add_device(
     ip: str = Form(...),
     name: str = Form(""),
     building: str = Form(""),
+    floor: str = Form(""),
     room: str = Form(""),
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
@@ -254,6 +255,7 @@ def add_device(
             "ip": ip,
             "name": (name or "").strip(),
             "building": (building or "").strip(),
+            "floor": (floor or "").strip(),
             "room": (room or "").strip(),
             "type": (device_type or "unknown").strip(),
             "driver": driver,
@@ -277,6 +279,7 @@ def update_device(
     ip: str = Form(...),
     name: str = Form(""),
     building: str = Form(""),
+    floor: str = Form(""),
     room: str = Form(""),
     device_type: str = Form("unknown"),
     driver: str = Form("ping"),
@@ -373,6 +376,7 @@ def update_device(
             d["ip"] = ip
             d["name"] = (name or "").strip()
             d["building"] = (building or "").strip()
+            d["floor"] = (floor or "").strip()
             d["room"] = (room or "").strip()
             d["type"] = (device_type or "unknown").strip()
             d["driver"] = driver
