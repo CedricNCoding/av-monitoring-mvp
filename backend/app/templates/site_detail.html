@@ -102,6 +102,7 @@
 
     code { font-family: monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--primary); }
     .muted { color: var(--text-muted); font-size: 13px; }
+    small { display: block; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -120,7 +121,7 @@
     </div>
 
     {% if saved %}
-      <div class="alert-success">✓ Les informations de contact ont été enregistrées avec succès.</div>
+      <div class="alert-success">✓ Les modifications ont été enregistrées avec succès.</div>
     {% endif %}
 
     <div class="row">
@@ -157,18 +158,39 @@
         </form>
       </div>
 
-      <div class="card" style="background: #f8fafc;">
-        <h2>🔐 Paramètres Agent</h2>
-        <div class="form-group">
-          <label>Token d'accès</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <code>••••••••••••</code>
-            <span class="muted" style="font-size: 11px;">(Masqué)</span>
+      <div>
+        <div class="card" style="background: #f8fafc; margin-bottom: 24px;">
+          <h2>🔐 Paramètres Agent</h2>
+          <div class="form-group">
+            <label>Token d'accès</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <code>••••••••••••</code>
+              <span class="muted" style="font-size: 11px;">(Masqué)</span>
+            </div>
           </div>
+          <p class="muted" style="font-style: italic;">
+            Le token est utilisé par l'agent local pour s'authentifier. Ne le partagez jamais.
+          </p>
         </div>
-        <p class="muted" style="font-style: italic;">
-          Le token est utilisé par l'agent local pour s'authentifier. Ne le partagez jamais.
-        </p>
+
+        <div class="card">
+          <h2>⏱️ Fréquence de reporting</h2>
+          <form method="post" action="/ui/sites/{{ site.id }}/reporting">
+            <div class="form-group">
+              <label>Intervalle si OK (secondes)</label>
+              <input type="number" name="ok_interval_s" value="{{ site.ok_interval_s or 300 }}" min="60" step="30" required>
+              <small class="muted">Fréquence d'envoi quand tout va bien (défaut: 300s = 5 min)</small>
+            </div>
+
+            <div class="form-group">
+              <label>Intervalle si erreur (secondes)</label>
+              <input type="number" name="ko_interval_s" value="{{ site.ko_interval_s or 60 }}" min="15" step="15" required>
+              <small class="muted">Fréquence d'envoi en cas de problème (défaut: 60s = 1 min)</small>
+            </div>
+
+            <button type="submit">Enregistrer les modifications</button>
+          </form>
+        </div>
       </div>
     </div>
 

@@ -481,6 +481,7 @@ def ingest(
         incoming_driver = (d.get("driver") or "ping").strip() or "ping"
 
         incoming_building = (d.get("building") or "").strip()
+        incoming_floor = (d.get("floor") or "").strip()
         incoming_room = (d.get("room") or "").strip()
 
         incoming_status = (d.get("status") or "unknown").strip()
@@ -490,6 +491,18 @@ def ingest(
         incoming_verdict = (d.get("verdict") or "").strip().lower() or None
 
         incoming_metrics = _as_dict(d.get("metrics") or {})
+
+        # Extraire driver_config (snmp, pjlink) depuis le payload agent
+        incoming_snmp = _as_dict(d.get("snmp") or {})
+        incoming_pjlink = _as_dict(d.get("pjlink") or {})
+        incoming_driver_config = {}
+        if incoming_snmp:
+            incoming_driver_config["snmp"] = incoming_snmp
+        if incoming_pjlink:
+            incoming_driver_config["pjlink"] = incoming_pjlink
+
+        # Extraire expectations depuis le payload agent
+        incoming_expectations = _as_dict(d.get("expectations") or {})
 
         dev = (
             db.query(Device)
@@ -505,6 +518,8 @@ def ingest(
                 name=incoming_name,
                 device_type=incoming_type,
                 driver=incoming_driver,
+                driver_config=incoming_driver_config,
+                expectations=incoming_expectations,
             )
             db.add(dev)
 
@@ -516,7 +531,12 @@ def ingest(
         dev.detail = incoming_detail
         dev.last_seen = now
         dev.building = incoming_building
+        dev.floor = incoming_floor
         dev.room = incoming_room
+
+        # driver_config et expectations
+        dev.driver_config = incoming_driver_config
+        dev.expectations = incoming_expectations
 
         # metrics
         dev.metrics = incoming_metrics
@@ -1027,6 +1047,91 @@ def ui_renew_token(
     }
 
     return RedirectResponse("/ui/agents", status_code=303)
+
+
+# ------------------------------------------------------------
+# UI : Site Detail Page
+# ------------------------------------------------------------
+@app.get("/ui/sites/{site_id}")
+def ui_site_detail(
+    request: Request,
+    site_id: int,
+    saved: int = 0,
+    db: Session = Depends(get_db)
+):
+    """Affiche la page de détail d'un site avec formulaires de configuration."""
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    devices = db.query(Device).filter(Device.site_id == site.id).all()
+
+    return templates.TemplateResponse("site_detail.html", {
+        "request": request,
+        "site": site,
+        "devices": devices,
+        "saved": saved == 1,
+    })
+
+
+# ------------------------------------------------------------
+# UI : Update Site Contact
+# ------------------------------------------------------------
+@app.post("/ui/sites/{site_id}/contact")
+def ui_update_site_contact(
+    site_id: int,
+    contact_first_name: str = Form(""),
+    contact_last_name: str = Form(""),
+    contact_title: str = Form(""),
+    contact_email: str = Form(""),
+    contact_phone: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    """Met à jour les informations de contact d'un site."""
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    site.contact_first_name = (contact_first_name or "").strip() or None
+    site.contact_last_name = (contact_last_name or "").strip() or None
+    site.contact_title = (contact_title or "").strip() or None
+    site.contact_email = (contact_email or "").strip() or None
+    site.contact_phone = (contact_phone or "").strip() or None
+
+    db.commit()
+
+    return RedirectResponse(f"/ui/sites/{site_id}?saved=1", status_code=303)
+
+
+# ------------------------------------------------------------
+# UI : Update Site Reporting Intervals
+# ------------------------------------------------------------
+@app.post("/ui/sites/{site_id}/reporting")
+def ui_update_site_reporting(
+    site_id: int,
+    ok_interval_s: int = Form(...),
+    ko_interval_s: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Met à jour les intervalles de reporting d'un site."""
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Validation des valeurs
+    site.ok_interval_s = max(60, ok_interval_s)
+    site.ko_interval_s = max(15, ko_interval_s)
+
+    db.commit()
+
+    # Mettre à jour le config_version pour déclencher la sync agent
+    devices = db.query(Device).filter(Device.site_id == site.id).all()
+    new_hash = _compute_config_hash(site, devices)
+    site.config_version = new_hash
+    site.config_updated_at = _now_utc()
+    db.commit()
+
+    return RedirectResponse(f"/ui/sites/{site_id}?saved=1", status_code=303)
 
 
 # ------------------------------------------------------------
