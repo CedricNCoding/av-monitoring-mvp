@@ -190,9 +190,15 @@
     <header>
       <h1>Équipements — {{ site.name }} <code>ID:{{ site.id }}</code></h1>
       <div class="muted">
-        Tri hiérarchique : Bâtiment → Salle → IP. Cliquez sur l’ID pour le détail.
+        Tri hiérarchique : Bâtiment → Salle → IP. Cliquez sur l'ID pour le détail.
       </div>
     </header>
+
+    {% if saved %}
+    <div style="background: var(--success-bg); color: var(--success); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--success); margin-bottom: 16px; font-weight: 600; font-size: 14px;">
+      ✓ Les modifications ont été enregistrées avec succès.
+    </div>
+    {% endif %}
 
     <!-- KPI BAR (alimentée par main.py) -->
     <div class="kpis">
@@ -216,6 +222,71 @@
         <div class="label">Unknown</div>
         <div class="value muted">{{ kpis.unknown_devices }}</div>
       </div>
+    </div>
+
+    <!-- Configuration du site -->
+    <div style="background: #ffffff; padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <details>
+        <summary style="font-weight: 700; font-size: 14px; color: var(--primary); cursor: pointer; user-select: none;">⚙️ Configuration du site</summary>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 16px;">
+          <!-- Contact -->
+          <div>
+            <h3 style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 12px 0;">👤 Contact de proximité</h3>
+            <form method="post" action="/ui/agents/{{ site.id }}/contact">
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Prénom</label>
+                <input name="contact_first_name" value="{{ site.contact_first_name or '' }}" placeholder="Ex: Jean" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Nom</label>
+                <input name="contact_last_name" value="{{ site.contact_last_name or '' }}" placeholder="Ex: Dupont" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Email</label>
+                <input type="email" name="contact_email" value="{{ site.contact_email or '' }}" placeholder="jean@exemple.com" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Téléphone</label>
+                <input type="tel" name="contact_phone" value="{{ site.contact_phone or '' }}" placeholder="+33 6 00 00 00 00" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+              </div>
+              <button type="submit" style="padding: 8px 16px; font-size: 13px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Enregistrer</button>
+            </form>
+          </div>
+
+          <!-- Fréquences de reporting -->
+          <div>
+            <h3 style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 12px 0;">⏱️ Fréquence de reporting</h3>
+            <form method="post" action="/ui/agents/{{ site.id }}/reporting">
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Intervalle si OK (secondes)</label>
+                <input type="number" name="ok_interval_s" value="{{ site.ok_interval_s or 300 }}" min="60" step="30" required style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                <small style="display: block; margin-top: 4px; font-size: 10px; color: var(--text-muted);">Défaut: 300s (5 min)</small>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px; color: var(--text-muted);">Intervalle si erreur (secondes)</label>
+                <input type="number" name="ko_interval_s" value="{{ site.ko_interval_s or 60 }}" min="15" step="15" required style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                <small style="display: block; margin-top: 4px; font-size: 10px; color: var(--text-muted);">Défaut: 60s (1 min)</small>
+              </div>
+              <button type="submit" style="padding: 8px 16px; font-size: 13px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px;">Enregistrer</button>
+            </form>
+          </div>
+
+          <!-- Token -->
+          <div>
+            <h3 style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 12px 0;">🔐 Token d'accès</h3>
+            <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+              <div style="margin-bottom: 8px;">
+                <code style="font-size: 11px;">••••••••••••</code>
+                <span style="font-size: 10px; color: var(--text-muted); margin-left: 6px;">(Masqué)</span>
+              </div>
+              <p style="font-size: 11px; color: var(--text-muted); margin: 0; font-style: italic;">
+                Le token est utilisé par l'agent local pour s'authentifier.
+              </p>
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div class="legend">

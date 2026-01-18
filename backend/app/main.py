@@ -1050,34 +1050,9 @@ def ui_renew_token(
 
 
 # ------------------------------------------------------------
-# UI : Site Detail Page
-# ------------------------------------------------------------
-@app.get("/ui/sites/{site_id}")
-def ui_site_detail(
-    request: Request,
-    site_id: int,
-    saved: int = 0,
-    db: Session = Depends(get_db)
-):
-    """Affiche la page de détail d'un site avec formulaires de configuration."""
-    site = db.query(Site).filter(Site.id == site_id).first()
-    if not site:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    devices = db.query(Device).filter(Device.site_id == site.id).all()
-
-    return templates.TemplateResponse("site_detail.html", {
-        "request": request,
-        "site": site,
-        "devices": devices,
-        "saved": saved == 1,
-    })
-
-
-# ------------------------------------------------------------
 # UI : Update Site Contact
 # ------------------------------------------------------------
-@app.post("/ui/sites/{site_id}/contact")
+@app.post("/ui/agents/{site_id}/contact")
 def ui_update_site_contact(
     site_id: int,
     contact_first_name: str = Form(""),
@@ -1100,13 +1075,13 @@ def ui_update_site_contact(
 
     db.commit()
 
-    return RedirectResponse(f"/ui/sites/{site_id}?saved=1", status_code=303)
+    return RedirectResponse(f"/ui/agents/{site_id}/devices?saved=1", status_code=303)
 
 
 # ------------------------------------------------------------
 # UI : Update Site Reporting Intervals
 # ------------------------------------------------------------
-@app.post("/ui/sites/{site_id}/reporting")
+@app.post("/ui/agents/{site_id}/reporting")
 def ui_update_site_reporting(
     site_id: int,
     ok_interval_s: int = Form(...),
@@ -1131,14 +1106,14 @@ def ui_update_site_reporting(
     site.config_updated_at = _now_utc()
     db.commit()
 
-    return RedirectResponse(f"/ui/sites/{site_id}?saved=1", status_code=303)
+    return RedirectResponse(f"/ui/agents/{site_id}/devices?saved=1", status_code=303)
 
 
 # ------------------------------------------------------------
 # UI : Devices by Agent (tri bâtiment / salle + KPIs)
 # ------------------------------------------------------------
 @app.get("/ui/agents/{site_id}/devices", response_class=HTMLResponse)
-def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_db)):
+def ui_agent_devices(request: Request, site_id: int, saved: int = 0, db: Session = Depends(get_db)):
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -1202,9 +1177,10 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
         "agent_devices.html",
         {
             "request": request,
-            "site": {"id": site.id, "name": site.name},
+            "site": site,  # Passer l'objet site complet pour accéder aux champs de config
             "grouped": grouped,
-            "kpis": kpis,  # <-- ajouté (corrige KPI à 0 côté template si vous l’affichez)
+            "kpis": kpis,
+            "saved": saved == 1,
         },
     )
 
