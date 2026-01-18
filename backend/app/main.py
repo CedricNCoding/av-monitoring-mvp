@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -44,7 +44,7 @@ def _uptime_centis_to_human(value: Any) -> str:
     minutes = rem // 60
     seconds = rem % 60
 
-    parts = []
+    parts: List[str] = []
     if days:
         parts.append(f"{days}j")
     if hours or days:
@@ -79,6 +79,33 @@ def _safe_setattr(obj: Any, name: str, value: Any) -> None:
             setattr(obj, name, value)
     except Exception:
         pass
+
+
+def _norm_status(v: Any) -> str:
+    s = (str(v or "").strip().lower()) or "unknown"
+    if s not in {"online", "offline", "unknown"}:
+        return s
+    return s
+
+
+def _count_statuses(devices: List[Device]) -> Dict[str, int]:
+    """
+    Comptage standardisé pour KPI.
+    """
+    online = 0
+    offline = 0
+    unknown = 0
+
+    for d in devices:
+        st = _norm_status(d.status)
+        if st == "online":
+            online += 1
+        elif st == "offline":
+            offline += 1
+        else:
+            unknown += 1
+
+    return {"online": online, "offline": offline, "unknown": unknown, "total": len(devices)}
 
 
 # ------------------------------------------------------------
@@ -117,6 +144,15 @@ def _init_db_with_retry(max_wait_s: int = 25) -> None:
 
 
 _init_db_with_retry()
+
+
+# ------------------------------------------------------------
+# Root
+# ------------------------------------------------------------
+@app.get("/", include_in_schema=False)
+def root():
+    # UI par défaut
+    return RedirectResponse(url="/ui/dashboard", status_code=302)
 
 
 # ------------------------------------------------------------
@@ -243,7 +279,7 @@ def ingest(
         _safe_setattr(dev, "building", incoming_building)
         _safe_setattr(dev, "room", incoming_room)
 
-        # metrics : si colonne présente -> set. Sinon -> ignore (sans casser).
+        # metrics : si colonne présente -> set. Sinon -> on les ignore (mais on ne casse pas).
         if hasattr(dev, "metrics"):
             _safe_setattr(dev, "metrics", incoming_metrics)
 
@@ -257,8 +293,8 @@ def ingest(
                     m["verdict"] = incoming_verdict
                     _safe_setattr(dev, "metrics", m)
 
-        # last_ok_at (si tu ajoutes la colonne plus tard)
-        if incoming_status.lower() == "online":
+        # last_ok_at : on garde la dernière fois où l'équipement est vu online
+        if incoming_status.strip().lower() == "online":
             _safe_setattr(dev, "last_ok_at", now)
 
         upserted += 1
@@ -332,50 +368,40 @@ def device_detail(device_id: int, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------
-# UI : Dashboard
+# UI : Dashboard (ajouté)
 # ------------------------------------------------------------
 @app.get("/ui/dashboard", response_class=HTMLResponse)
 def ui_dashboard(request: Request, db: Session = Depends(get_db)):
     sites = db.query(Site).order_by(Site.id.asc()).all()
     devices = db.query(Device).all()
 
-    total_sites = len(sites)
-    total_devices = len(devices)
+    # KPIs globaux
+    st = _count_statuses(devices)
+    kpis = {
+        "total_sites": len(sites),
+        "total_devices": st["total"],
+        "offline_devices": st["offline"],
+        "unknown_devices": st["unknown"],
+        "online_devices": st["online"],
+    }
 
-    offline_devices = 0
-    unknown_devices = 0
-    for d in devices:
-        st = (d.status or "unknown").strip().lower()
-        if st == "offline":
-            offline_devices += 1
-        elif st not in {"online", "offline"}:
-            unknown_devices += 1
-
+    # Cards par site (pour dashboard.html)
     site_cards: List[Dict[str, Any]] = []
     for s in sites:
-        s_devices = [d for d in devices if d.site_id == s.id]
-        s_offline = 0
-        for d in s_devices:
-            if (d.status or "").strip().lower() == "offline":
-                s_offline += 1
+        site_devs = [d for d in devices if d.site_id == s.id]
+        st_site = _count_statuses(site_devs)
 
         site_cards.append(
             {
                 "id": s.id,
                 "name": s.name,
-                "device_count": len(s_devices),
-                "offline_count": s_offline,
-                # MVP: pas de modèle "contact" pour l’instant
-                "has_contact": False,
+                "device_count": st_site["total"],
+                "offline_count": st_site["offline"],
+                # "has_contact" est prévu dans votre template, mais pas encore modélisé.
+                # On reste explicite et non bloquant.
+                "has_contact": bool(_safe_getattr(s, "contact", None) or _safe_getattr(s, "email", None)),
             }
         )
-
-    kpis = {
-        "total_sites": total_sites,
-        "total_devices": total_devices,
-        "offline_devices": offline_devices,
-        "unknown_devices": unknown_devices,
-    }
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -402,7 +428,7 @@ def ui_agents(request: Request, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------
-# UI : Devices by Agent (tri bâtiment / salle)
+# UI : Devices by Agent (tri bâtiment / salle + KPIs)
 # ------------------------------------------------------------
 @app.get("/ui/agents/{site_id}/devices", response_class=HTMLResponse)
 def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_db)):
@@ -411,6 +437,33 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Site not found")
 
     rows = db.query(Device).filter(Device.site_id == site_id).all()
+
+    # KPIs site (utiles pour un header / résumé)
+    st_site = _count_statuses(rows)
+
+    # Verdicts (si présents)
+    fault = 0
+    expected_off = 0
+    doubt = 0
+    for d in rows:
+        m = _as_dict(_safe_getattr(d, "metrics", {}) or {})
+        verdict = (_safe_getattr(d, "verdict", None) or m.get("verdict") or "").strip().lower()
+        if verdict == "fault":
+            fault += 1
+        elif verdict == "expected_off":
+            expected_off += 1
+        elif verdict == "doubt":
+            doubt += 1
+
+    kpis = {
+        "total_devices": st_site["total"],
+        "online_devices": st_site["online"],
+        "offline_devices": st_site["offline"],
+        "unknown_devices": st_site["unknown"],
+        "fault_devices": fault,
+        "expected_off_devices": expected_off,
+        "doubt_devices": doubt,
+    }
 
     def _key(d: Device):
         b = ((_safe_getattr(d, "building", "") or "").strip() or "—").lower()
@@ -457,7 +510,12 @@ def ui_agent_devices(request: Request, site_id: int, db: Session = Depends(get_d
 
     return templates.TemplateResponse(
         "agent_devices.html",
-        {"request": request, "site": {"id": site.id, "name": site.name}, "grouped": grouped},
+        {
+            "request": request,
+            "site": {"id": site.id, "name": site.name},
+            "grouped": grouped,
+            "kpis": kpis,  # <-- ajouté (corrige KPI à 0 côté template si vous l’affichez)
+        },
     )
 
 

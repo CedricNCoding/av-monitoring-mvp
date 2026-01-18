@@ -5,427 +5,307 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Devices (Site {{ site.id }})</title>
   <style>
-    :root{
-      --primary:#2563eb;
-      --primary-hover:#1d4ed8;
-      --bg:#f8fafc;
-      --card:#ffffff;
-      --text:#0f172a;
-      --muted:#64748b;
-      --border:#e2e8f0;
-      --shadow: 0 8px 20px rgba(2, 8, 23, 0.06);
-      --shadow-sm: 0 1px 3px rgba(2, 8, 23, 0.08);
-
-      --ok:#10b981;
-      --fault:#ef4444;
-      --expected:#0ea5e9;
-      --doubt:#f59e0b;
-      --unknown:#94a3b8;
-
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --radius: 14px;
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --danger-bg: #fef2f2;
+      --warning: #f59e0b;
+      --warning-bg: #fffbeb;
+      --success: #10b981;
+      --success-bg: #f0fdf4;
+      --border: #e2e8f0;
     }
 
-    *{ box-sizing:border-box; }
-
-    body{
-      margin:0;
-      padding:24px;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.5;
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
     }
 
-    .container{ max-width:1400px; margin:0 auto; }
+    .container { max-width: 1400px; margin: 0 auto; }
 
-    a{ color:inherit; }
+    /* Navigation */
+    .topbar { display:flex; align-items:flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .back-link { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 14px; }
+    .back-link:hover { color: var(--primary); text-decoration: underline; }
 
-    .top{
-      display:flex;
-      gap:14px;
-      align-items:flex-start;
-      justify-content:space-between;
-      flex-wrap:wrap;
-      margin-bottom:14px;
+    header { margin-bottom: 18px; }
+    h1 { font-size: 24px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.025em; }
+    .muted { color: var(--text-muted); font-size: 13px; }
+
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.9em; color: var(--primary); }
+
+    /* KPIs */
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 16px 0 22px 0;
+    }
+    .kpi {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .kpi .label { color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi .value { font-size: 26px; font-weight: 900; margin-top: 4px; }
+    .kpi .value.primary { color: var(--primary); }
+    .kpi .value.danger { color: var(--danger); }
+    .kpi .value.warn { color: var(--warning); }
+    .kpi .value.muted { color: var(--text-muted); }
+
+    /* Legend */
+    .legend {
+      display:flex; flex-wrap: wrap; gap: 10px;
+      margin: 6px 0 24px 0;
+      align-items:center;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text-main);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 999px; display:inline-block; }
+
+    .dot.ok { background: var(--success); }
+    .dot.fault { background: var(--danger); }
+    .dot.expected_off { background: var(--warning); }
+    .dot.doubt { background: #7c3aed; }
+    .dot.unknown { background: var(--text-muted); }
+
+    /* Sections */
+    .section { margin-top: 34px; }
+    h2 {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 8px;
+      margin: 0 0 16px 0;
+    }
+    h3 {
+      font-size: 15px;
+      margin: 18px 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h3::before { content: "📍"; font-size: 14px; }
+
+    /* Table */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      margin-bottom: 18px;
+    }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th {
+      background: #fcfcfd;
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 12px;
+    }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background-color: #f8fafc; }
+
+    .id-link { font-weight: 800; color: var(--primary); text-decoration: none; }
+    .id-link:hover { text-decoration: underline; }
+
+    .meta { display:flex; flex-direction:column; gap: 4px; }
+    .tag {
+      display:inline-flex;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      width: fit-content;
+      border: 1px solid var(--border);
     }
 
-    .back{
+    /* Verdict badge */
+    .badge {
       display:inline-flex;
       align-items:center;
-      gap:10px;
-      text-decoration:none;
-      color:var(--muted);
-      font-weight:700;
-      font-size:13px;
-      padding:8px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,0.6);
-      box-shadow:var(--shadow-sm);
-      transition:transform .12s ease, color .12s ease;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid var(--border);
+      background: #fff;
+      width: fit-content;
     }
-    .back:hover{ transform:translateY(-1px); color:var(--primary); }
+    .badge.ok { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+    .badge.fault { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+    .badge.expected_off { border-color: var(--warning); color: var(--warning); background: var(--warning-bg); }
+    .badge.doubt { border-color: #7c3aed; color: #7c3aed; background: #f5f3ff; }
+    .badge.unknown { border-color: var(--border); color: var(--text-muted); background: #f8fafc; }
 
-    h1{
-      margin:0;
-      font-size:22px;
-      font-weight:900;
-      letter-spacing:-0.02em;
-    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .ellipsis { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    .subtitle{
-      margin:6px 0 0 0;
-      color:var(--muted);
-      font-size:13px;
-      max-width: 980px;
-    }
-
-    .mono{ font-family:var(--mono); }
-    code{
-      font-family:var(--mono);
-      font-size:13px;
-      background:#f1f5f9;
-      padding:4px 8px;
-      border-radius:10px;
-      border:1px solid #e6edf6;
-      color:var(--primary);
-      font-weight:800;
-    }
-
-    .cards{
-      display:grid;
-      grid-template-columns: repeat(5, minmax(140px, 1fr));
-      gap:10px;
-      width: min(840px, 100%);
-    }
-
-    .kpi{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:12px 14px;
-      box-shadow:var(--shadow-sm);
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-      min-height:68px;
-    }
-
-    .kpi .label{
-      color:var(--muted);
-      font-size:12px;
-      font-weight:800;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
-    }
-
-    .kpi .value{
-      font-size:20px;
-      font-weight:950;
-      letter-spacing:-0.02em;
-      display:flex;
-      gap:10px;
-      align-items:baseline;
-    }
-
-    .dot{
-      width:10px;
-      height:10px;
-      border-radius:999px;
-      display:inline-block;
-      background:var(--unknown);
-      box-shadow:0 0 0 4px rgba(148,163,184,0.15);
-    }
-    .dot.ok{ background:var(--ok); box-shadow:0 0 0 4px rgba(16,185,129,0.15); }
-    .dot.fault{ background:var(--fault); box-shadow:0 0 0 4px rgba(239,68,68,0.15); }
-    .dot.doubt{ background:var(--doubt); box-shadow:0 0 0 4px rgba(245,158,11,0.15); }
-    .dot.expected{ background:var(--expected); box-shadow:0 0 0 4px rgba(14,165,233,0.15); }
-    .dot.unknown{ background:var(--unknown); box-shadow:0 0 0 4px rgba(148,163,184,0.15); }
-
-    .section{
-      margin-top:22px;
-    }
-
-    .section-title{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin: 0 0 10px 0;
-    }
-
-    h2{
-      margin:0;
-      font-size:13px;
-      color:var(--muted);
-      font-weight:900;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
-    }
-
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:6px 10px;
-      font-size:12px;
-      font-weight:900;
-      border:1px solid var(--border);
-      background:#ffffff;
-      color:var(--muted);
-      white-space:nowrap;
-    }
-
-    .table{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      overflow:hidden;
-      box-shadow:var(--shadow);
-    }
-
-    table{
-      width:100%;
-      border-collapse:collapse;
-      font-size:13px;
-    }
-
-    th, td{
-      padding:12px 14px;
-      border-bottom:1px solid var(--border);
-      text-align:left;
-      vertical-align:middle;
-    }
-
-    th{
-      font-size:12px;
-      color:var(--muted);
-      font-weight:900;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
-      background:#fcfcfd;
-    }
-
-    tr:hover td{ background:#f8fafc; }
-    tr:last-child td{ border-bottom:none; }
-
-    .id-link{
-      color:var(--primary);
-      font-weight:950;
-      text-decoration:none;
-    }
-    .id-link:hover{ text-decoration:underline; }
-
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:4px 10px;
-      font-weight:900;
-      font-size:12px;
-      border:1px solid var(--border);
-      background:#ffffff;
-      white-space:nowrap;
-    }
-
-    .badge .b-dot{
-      width:8px; height:8px; border-radius:999px; background:var(--unknown);
-    }
-
-    .badge.ok{ border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.08); color: #065f46; }
-    .badge.ok .b-dot{ background: var(--ok); }
-
-    .badge.fault{ border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.08); color: #7f1d1d; }
-    .badge.fault .b-dot{ background: var(--fault); }
-
-    .badge.expected_off{ border-color: rgba(14,165,233,0.25); background: rgba(14,165,233,0.08); color: #075985; }
-    .badge.expected_off .b-dot{ background: var(--expected); }
-
-    .badge.doubt{ border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.10); color: #7c2d12; }
-    .badge.doubt .b-dot{ background: var(--doubt); }
-
-    .badge.unknown{ border-color: rgba(148,163,184,0.35); background: rgba(148,163,184,0.10); color: #334155; }
-    .badge.unknown .b-dot{ background: var(--unknown); }
-
-    .status-mini{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      font-weight:900;
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:0.04em;
-    }
-    .status-mini .s-dot{ width:8px; height:8px; border-radius:999px; background:var(--unknown); }
-    .status-mini.online{ color:#065f46; }
-    .status-mini.online .s-dot{ background:var(--ok); }
-    .status-mini.offline{ color:#7f1d1d; }
-    .status-mini.offline .s-dot{ background:var(--fault); }
-    .status-mini.unknown{ color:#334155; }
-
-    .muted{ color:var(--muted); font-size:12px; }
-    .ellipsis{ max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-    @media (max-width: 1100px){
-      .cards{ grid-template-columns: repeat(2, minmax(160px, 1fr)); }
-      .table{ overflow-x:auto; }
-    }
-    @media (max-width: 520px){
-      body{ padding:16px; }
-      .cards{ grid-template-columns: 1fr; }
+    @media (max-width: 1000px) {
+      .table-container { overflow-x: auto; }
+      .ellipsis { max-width: 220px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="top">
-      <a class="back" href="/ui/agents">← Retour aux agents</a>
-
-      <div style="flex:1; min-width: 320px;">
-        <h1>Équipements — Site <code>{{ site.name }}</code> <span class="mono" style="color:var(--muted); font-weight:900;">(#{{ site.id }})</span></h1>
-        <p class="subtitle">
-          Tri hiérarchique : Bâtiment → Salle → IP. Cliquez sur l’ID d’un équipement pour afficher ses métriques détaillées.
-        </p>
+    <div class="topbar">
+      <a href="/ui/agents" class="back-link">← Retour aux agents</a>
+      <div class="muted" style="text-align:right;">
+        Site <strong>{{ site.name }}</strong> <span class="mono">(#{{ site.id }})</span>
       </div>
+    </div>
 
-      {# --- KPIs calculés depuis grouped --- #}
-      {% set total = 0 %}
-      {% set c_ok = 0 %}
-      {% set c_fault = 0 %}
-      {% set c_expected = 0 %}
-      {% set c_doubt = 0 %}
-      {% set c_unknown = 0 %}
-
-      {% for building, rooms in grouped.items() %}
-        {% for room, devices in rooms.items() %}
-          {% for d in devices %}
-            {% set total = total + 1 %}
-            {% set v = (d.verdict or (d.metrics.get('verdict') if d.metrics else '')) %}
-            {% if v == 'ok' %}
-              {% set c_ok = c_ok + 1 %}
-            {% elif v == 'fault' %}
-              {% set c_fault = c_fault + 1 %}
-            {% elif v == 'expected_off' %}
-              {% set c_expected = c_expected + 1 %}
-            {% elif v == 'doubt' %}
-              {% set c_doubt = c_doubt + 1 %}
-            {% else %}
-              {% set c_unknown = c_unknown + 1 %}
-            {% endif %}
-          {% endfor %}
-        {% endfor %}
-      {% endfor %}
-
-      <div class="cards">
-        <div class="kpi">
-          <div class="label">Total</div>
-          <div class="value"><span class="dot unknown"></span>{{ total }}</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Fault</div>
-          <div class="value"><span class="dot fault"></span>{{ c_fault }}</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Doubt</div>
-          <div class="value"><span class="dot doubt"></span>{{ c_doubt }}</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Expected off</div>
-          <div class="value"><span class="dot expected"></span>{{ c_expected }}</div>
-        </div>
-        <div class="kpi">
-          <div class="label">OK</div>
-          <div class="value"><span class="dot ok"></span>{{ c_ok }}</div>
-        </div>
+    <header>
+      <h1>Équipements — {{ site.name }} <code>ID:{{ site.id }}</code></h1>
+      <div class="muted">
+        Tri hiérarchique : Bâtiment → Salle → IP. Cliquez sur l’ID pour le détail.
       </div>
+    </header>
+
+    <!-- KPI BAR (alimentée par main.py) -->
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label">Total</div>
+        <div class="value primary">{{ kpis.total_devices }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Fault</div>
+        <div class="value danger">{{ kpis.fault_devices }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Expected off</div>
+        <div class="value warn">{{ kpis.expected_off_devices }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Doubt</div>
+        <div class="value" style="color:#7c3aed">{{ kpis.doubt_devices }}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Unknown</div>
+        <div class="value muted">{{ kpis.unknown_devices }}</div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="pill"><span class="dot ok"></span> ok</span>
+      <span class="pill"><span class="dot fault"></span> fault</span>
+      <span class="pill"><span class="dot expected_off"></span> expected_off</span>
+      <span class="pill"><span class="dot doubt"></span> doubt</span>
+      <span class="pill"><span class="dot unknown"></span> unknown</span>
     </div>
 
     {% for building, rooms in grouped.items() %}
       <div class="section">
-        <div class="section-title">
-          <h2>Bâtiment : {{ building }}</h2>
-          <span class="pill">Salles : {{ rooms|length }}</span>
-        </div>
+        <h2>Bâtiment : {{ building }}</h2>
 
         {% for room, devices in rooms.items() %}
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 8px 0 10px 0; flex-wrap:wrap;">
-            <div class="pill">Salle : <span class="mono">{{ room }}</span></div>
-            <div class="pill">Équipements : <span class="mono">{{ devices|length }}</span></div>
-          </div>
+          <h3>{{ room }} <span class="muted">({{ devices|length }} équipement(s))</span></h3>
 
-          <div class="table">
+          <div class="table-container">
             <table>
               <thead>
                 <tr>
-                  <th style="width: 86px;">ID</th>
+                  <th>ID</th>
                   <th>Équipement</th>
-                  <th style="width: 160px;">IP</th>
-                  <th style="width: 160px;">Type / Driver</th>
-                  <th style="width: 150px;">Status</th>
-                  <th style="width: 170px;">Verdict</th>
-                  <th style="width: 160px;">Détail</th>
-                  <th style="width: 140px;">Uptime</th>
+                  <th>IP</th>
+                  <th>Type / Driver</th>
+                  <th>Verdict / Status</th>
+                  <th>Détail</th>
+                  <th>Uptime</th>
                   <th>sysDescr</th>
-                  <th style="width: 210px;">Last seen (UTC)</th>
+                  <th>Last seen</th>
                 </tr>
               </thead>
               <tbody>
                 {% for d in devices %}
-                  {% set m = d.metrics or {} %}
-                  {% set verdict = (d.verdict or m.get('verdict') or 'unknown') %}
-                  <tr>
-                    <td><a class="id-link" href="/ui/devices/{{ d.id }}">#{{ d.id }}</a></td>
+                {% set m = d.metrics or {} %}
+                {% set v = (d.verdict or '')|lower %}
+                <tr>
+                  <td><a href="/ui/devices/{{ d.id }}" class="id-link">#{{ d.id }}</a></td>
 
-                    <td>
-                      <div style="display:flex; flex-direction:column; gap:4px;">
-                        <div style="font-weight:950;">{{ d.name }}</div>
-                        <div class="muted">Bâtiment/Salle : <span class="mono">{{ d.building }}</span> / <span class="mono">{{ d.room }}</span></div>
+                  <td>
+                    <strong>{{ d.name or "Sans nom" }}</strong>
+                    {% if d.building or d.room %}
+                      <div class="muted" style="margin-top:4px;">
+                        {{ d.building or "—" }} / {{ d.room or "—" }}
                       </div>
-                    </td>
+                    {% endif %}
+                  </td>
 
-                    <td><code>{{ d.ip }}</code></td>
+                  <td><code class="mono">{{ d.ip }}</code></td>
 
-                    <td>
-                      <div style="display:flex; flex-direction:column; gap:6px;">
-                        <div class="muted">{{ d.device_type }}</div>
-                        <span class="badge unknown" style="justify-content:flex-start;">
-                          <span class="b-dot"></span><span class="mono">{{ d.driver }}</span>
-                        </span>
-                      </div>
-                    </td>
+                  <td>
+                    <div class="meta">
+                      <span>{{ d.device_type }}</span>
+                      <span class="tag">{{ d.driver }}</span>
+                    </div>
+                  </td>
 
-                    <td>
-                      {% if d.status == "online" %}
-                        <span class="status-mini online"><span class="s-dot"></span>online</span>
-                      {% elif d.status == "offline" %}
-                        <span class="status-mini offline"><span class="s-dot"></span>offline</span>
+                  <td>
+                    {% if v == "ok" %}
+                      <span class="badge ok"><span class="dot ok"></span> ok</span>
+                    {% elif v == "fault" %}
+                      <span class="badge fault"><span class="dot fault"></span> fault</span>
+                    {% elif v == "expected_off" %}
+                      <span class="badge expected_off"><span class="dot expected_off"></span> expected_off</span>
+                    {% elif v == "doubt" %}
+                      <span class="badge doubt"><span class="dot doubt"></span> doubt</span>
+                    {% else %}
+                      {# fallback sur status si verdict absent #}
+                      {% if (d.status or "")|lower == "online" %}
+                        <span class="badge ok"><span class="dot ok"></span> ok</span>
+                      {% elif (d.status or "")|lower == "offline" %}
+                        <span class="badge fault"><span class="dot fault"></span> offline</span>
                       {% else %}
-                        <span class="status-mini unknown"><span class="s-dot"></span>{{ d.status }}</span>
+                        <span class="badge unknown"><span class="dot unknown"></span> {{ d.status or "unknown" }}</span>
                       {% endif %}
-                    </td>
+                    {% endif %}
+                  </td>
 
-                    <td>
-                      {% if verdict == "ok" %}
-                        <span class="badge ok"><span class="b-dot"></span>ok</span>
-                      {% elif verdict == "fault" %}
-                        <span class="badge fault"><span class="b-dot"></span>fault</span>
-                      {% elif verdict == "expected_off" %}
-                        <span class="badge expected_off"><span class="b-dot"></span>expected_off</span>
-                      {% elif verdict == "doubt" %}
-                        <span class="badge doubt"><span class="b-dot"></span>doubt</span>
-                      {% else %}
-                        <span class="badge unknown"><span class="b-dot"></span>unknown</span>
-                      {% endif %}
-                    </td>
+                  <td>
+                    <span class="muted mono">{{ d.detail or "—" }}</span>
+                  </td>
 
-                    <td class="muted ellipsis" title="{{ d.detail or '' }}">{{ d.detail or "—" }}</td>
-                    <td class="mono">{{ m.uptime_human or "—" }}</td>
-                    <td class="muted ellipsis" title="{{ m.sys_descr or m.sys_descr_short or '' }}">{{ m.sys_descr_short or "—" }}</td>
-                    <td class="muted mono">{{ d.last_seen or "—" }}</td>
-                  </tr>
+                  <td>{{ m.uptime_human or "—" }}</td>
+
+                  <td class="muted ellipsis" title="{{ m.sys_descr_short or '' }}">
+                    {{ m.sys_descr_short or "—" }}
+                  </td>
+
+                  <td class="muted mono">{{ d.last_seen or "—" }}</td>
+                </tr>
                 {% endfor %}
               </tbody>
             </table>

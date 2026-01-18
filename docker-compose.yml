@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16
@@ -25,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/avmvp
 
-      # Optionnel (si vous utilisez purge/rétention)
+      # Optionnels (si vous utilisez purge/rétention)
       EVENT_RETENTION_DAYS: "90"
       PURGE_INTERVAL_HOURS: "24"
     ports:
@@ -41,14 +39,19 @@ services:
     ports:
       - "8080:8080"
     volumes:
+      # Persistance de la config (IMPORTANT)
       - ./agent-config:/agent/config
     environment:
+      # Optionnel : si votre agent lit encore ces variables pour pré-remplir / fallback
+      # Mais la "source de vérité" doit être /agent/config/config.json
       API_URL: http://backend:8000/ingest
       SITE_NAME: site-demo
       SITE_TOKEN: change-me
-      DEVICES_JSON: >
-        [{"ip":"8.8.8.8","type":"test","driver":"ping"},
-         {"ip":"1.1.1.1","type":"test","driver":"ping"}]
+
+      # IMPORTANT : on évite DEVICES_JSON en prod car ça peut écraser/contredire config.json
+      # DEVICES_JSON: >
+      #   [{"ip":"8.8.8.8","type":"test","driver":"ping"},
+      #    {"ip":"1.1.1.1","type":"test","driver":"ping"}]
     depends_on:
       backend:
         condition: service_started

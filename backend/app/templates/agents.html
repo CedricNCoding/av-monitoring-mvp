@@ -5,278 +5,288 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Agents</title>
   <style>
-    :root{
-      --primary:#2563eb;
-      --primary-hover:#1d4ed8;
-      --bg:#f8fafc;
-      --card:#ffffff;
-      --text:#0f172a;
-      --muted:#64748b;
-      --border:#e2e8f0;
-      --shadow: 0 8px 20px rgba(2, 8, 23, 0.06);
-      --shadow-sm: 0 1px 3px rgba(2, 8, 23, 0.08);
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --radius: 14px;
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+      --shadow-soft: 0 1px 3px rgba(0,0,0,0.06);
     }
 
-    *{ box-sizing:border-box; }
+    * { box-sizing: border-box; }
 
-    body{
-      margin:0;
-      padding:28px;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.5;
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 28px;
+      line-height: 1.5;
     }
 
-    .container{ max-width:1100px; margin:0 auto; }
+    .container { max-width: 1100px; margin: 0 auto; }
 
-    .topbar{
-      display:flex;
-      align-items:flex-end;
-      justify-content:space-between;
-      gap:16px;
-      margin-bottom:18px;
+    /* Topbar */
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
     }
 
-    h1{
-      margin:0;
-      font-size:26px;
-      letter-spacing:-0.02em;
-      font-weight:800;
+    .title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
-    .subtitle{
-      margin:6px 0 0 0;
-      color:var(--muted);
-      font-size:14px;
+    h1 {
+      font-size: 26px;
+      font-weight: 900;
+      margin: 0;
+      letter-spacing: -0.025em;
     }
 
-    .summary{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
+    .muted { color: var(--text-muted); font-size: 14px; }
+
+    .nav {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
-    .chip{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:999px;
-      padding:8px 12px;
-      box-shadow:var(--shadow-sm);
-      display:flex;
-      gap:8px;
-      align-items:center;
-      color:var(--muted);
-      font-size:13px;
-      white-space:nowrap;
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-main);
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 13px;
+      box-shadow: var(--shadow-soft);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
     }
 
-    .chip strong{
-      color:var(--text);
-      font-weight:800;
-      font-family:var(--mono);
-      font-size:13px;
+    .nav a:hover {
+      transform: translateY(-1px);
+      border-color: #cbd5e1;
+      box-shadow: var(--shadow);
     }
 
-    .panel{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      overflow:hidden;
+    .nav a.active {
+      border-color: rgba(37, 99, 235, 0.35);
+      color: var(--primary);
+      background: #eff6ff;
     }
 
-    .panel-header{
-      padding:14px 16px;
-      border-bottom:1px solid var(--border);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      background:linear-gradient(to bottom, rgba(248,250,252,1), rgba(248,250,252,0.35));
+    /* Controls */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 12px;
+      margin: 16px 0 18px 0;
     }
 
-    .panel-header .title{
-      font-size:13px;
-      color:var(--muted);
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
+    .input, .select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: var(--card-bg);
+      font-size: 14px;
+      outline: none;
+      box-shadow: var(--shadow-soft);
     }
 
-    .hint{
-      color:var(--muted);
-      font-size:13px;
+    .input:focus, .select:focus {
+      border-color: rgba(37,99,235,0.5);
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
     }
 
-    table{
-      width:100%;
-      border-collapse:collapse;
+    /* Table container */
+    .table-wrap {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow-soft);
     }
 
-    th, td{
-      padding:14px 16px;
-      border-bottom:1px solid var(--border);
-      vertical-align:middle;
-      text-align:left;
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      border: none;
     }
 
-    th{
-      font-size:12px;
-      color:var(--muted);
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
-      background:#fcfcfd;
+    thead th {
+      background: #fcfcfd;
+      padding: 14px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
     }
 
-    tr:hover td{
-      background:#f8fafc;
+    tbody td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      font-size: 14px;
+      font-weight: 600;
     }
 
-    tr:last-child td{
-      border-bottom:none;
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background-color: #f8fafc; }
+
+    code {
+      background: #f1f5f9;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      color: var(--primary);
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
     }
 
-    .mono{
-      font-family:var(--mono);
-      font-size:13px;
+    .site-id {
+      color: var(--text-muted);
+      font-weight: 800;
+      font-size: 13px;
+      white-space: nowrap;
     }
 
-    code{
-      font-family:var(--mono);
-      font-size:13px;
-      background:#f1f5f9;
-      padding:4px 8px;
-      border-radius:10px;
-      border:1px solid #e6edf6;
-      color:var(--primary);
-      font-weight:700;
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: var(--text-main);
     }
 
-    .count{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--primary);
+      color: white;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 900;
+      text-decoration: none;
+      transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: var(--shadow-soft);
+      white-space: nowrap;
     }
 
-    .badge{
-      display:inline-flex;
-      min-width:34px;
-      height:26px;
-      padding:0 10px;
-      border-radius:999px;
-      align-items:center;
-      justify-content:center;
-      font-weight:800;
-      background:#eff6ff;
-      color:var(--primary);
-      border:1px solid #dbeafe;
-      font-size:13px;
+    .btn:hover {
+      background-color: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+      text-decoration: none;
     }
 
-    .action{
-      display:flex;
-      justify-content:flex-end;
+    /* Empty state */
+    .empty {
+      padding: 26px;
+      text-align: center;
+    }
+    .empty h2 {
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      font-weight: 900;
+    }
+    .empty p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 14px;
     }
 
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      gap:10px;
-      padding:9px 14px;
-      border-radius:10px;
-      text-decoration:none;
-      background:var(--primary);
-      color:#fff;
-      font-weight:800;
-      font-size:13px;
-      border:1px solid rgba(255,255,255,0.10);
-      box-shadow:0 8px 18px rgba(37, 99, 235, 0.18);
-      transition:transform .12s ease, background .12s ease, box-shadow .12s ease;
-      white-space:nowrap;
-    }
-
-    .btn:hover{
-      background:var(--primary-hover);
-      transform:translateY(-1px);
-      box-shadow:0 10px 24px rgba(37, 99, 235, 0.22);
-    }
-
-    .empty{
-      padding:22px 16px;
-      color:var(--muted);
-      font-size:14px;
-    }
-
-    @media (max-width: 780px){
-      body{ padding:18px; }
-      .topbar{ align-items:flex-start; flex-direction:column; }
-      .summary{ justify-content:flex-start; }
-      th:nth-child(1), td:nth-child(1){ display:none; } /* cacher ID sur mobile */
+    @media (max-width: 700px) {
+      body { padding: 18px; }
+      .controls { grid-template-columns: 1fr; }
+      thead th:nth-child(1),
+      tbody td:nth-child(1) { display: none; } /* masque ID en mobile */
     }
   </style>
 </head>
+
 <body>
   <div class="container">
+
     <div class="topbar">
-      <div>
+      <div class="title">
         <h1>Agents (Sites)</h1>
-        <p class="subtitle">
-          Chaque agent déployé supervise un site local. Sélectionnez un site pour consulter ses équipements et leurs états.
-        </p>
+        <div class="muted">Chaque agent déployé supervise un site local. Sélectionnez un site pour gérer ses équipements.</div>
       </div>
 
-      {% set total_sites = sites|length %}
-      {% set total_devices = 0 %}
-      {% for s in sites %}
-        {% set total_devices = total_devices + (s.device_count or 0) %}
-      {% endfor %}
-
-      <div class="summary">
-        <div class="chip">Sites <strong>{{ total_sites }}</strong></div>
-        <div class="chip">Équipements <strong>{{ total_devices }}</strong></div>
-        <div class="chip">UI <strong class="mono">/ui/agents</strong></div>
-      </div>
+      <nav class="nav">
+        <a href="/ui/agents" class="active">Agents</a>
+        <a href="/ui/dashboard">Dashboard</a>
+      </nav>
     </div>
 
-    <div class="panel">
-      <div class="panel-header">
-        <div class="title">Liste des sites</div>
-        <div class="hint">Astuce : utilisez le sous-domaine /auth (Traefik) pour protéger l’accès.</div>
-      </div>
+    <div class="controls">
+      <input id="q" class="input" placeholder="Rechercher un site (nom)..." autocomplete="off">
+      <select id="sort" class="select">
+        <option value="id_asc">Tri : ID (croissant)</option>
+        <option value="id_desc">Tri : ID (décroissant)</option>
+        <option value="name_asc">Tri : Nom (A→Z)</option>
+        <option value="name_desc">Tri : Nom (Z→A)</option>
+        <option value="dev_desc">Tri : Équipements (↓)</option>
+        <option value="dev_asc">Tri : Équipements (↑)</option>
+      </select>
+    </div>
 
+    <div class="table-wrap">
       {% if sites and sites|length > 0 %}
-      <table>
+      <table id="sitesTable">
         <thead>
           <tr>
-            <th style="width: 90px;">ID</th>
-            <th>Nom du site</th>
-            <th style="width: 200px;">Équipements</th>
-            <th style="width: 160px; text-align:right;">Action</th>
+            <th>ID</th>
+            <th>Nom du Site / Agent</th>
+            <th>Équipements</th>
+            <th style="text-align:right;">Action</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="tbody">
           {% for s in sites %}
-          <tr>
-            <td class="mono" style="color:var(--muted); font-weight:800;">#{{ s.id }}</td>
+          <tr
+            data-id="{{ s.id }}"
+            data-name="{{ (s.name or '')|lower }}"
+            data-dev="{{ s.device_count or 0 }}"
+          >
+            <td class="site-id">#{{ s.id }}</td>
+            <td><code>{{ s.name }}</code></td>
             <td>
-              <div style="display:flex; flex-direction:column; gap:4px;">
-                <div><code>{{ s.name }}</code></div>
-                <div class="hint">Agent ID : <span class="mono">site_id={{ s.id }}</span></div>
-              </div>
+              <span class="badge">{{ s.device_count }}</span>
+              <span class="muted" style="margin-left: 8px;">unités</span>
             </td>
-            <td>
-              <div class="count">
-                <span class="badge">{{ s.device_count }}</span>
-                <span class="hint">unités</span>
-              </div>
-            </td>
-            <td class="action">
-              <a class="btn" href="/ui/agents/{{ s.id }}/devices">Explorer <span aria-hidden="true">→</span></a>
+            <td style="text-align:right;">
+              <a href="/ui/agents/{{ s.id }}/devices" class="btn">Explorer →</a>
             </td>
           </tr>
           {% endfor %}
@@ -284,11 +294,62 @@
       </table>
       {% else %}
         <div class="empty">
-          Aucun site n’a été créé pour le moment. Créez un site via l’API <span class="mono">POST /admin/create-site</span>
-          puis configurez l’agent avec <span class="mono">site_name</span> + <span class="mono">site_token</span>.
+          <h2>Aucun site enregistré</h2>
+          <p>Créez un site via l’API /admin/create-site puis envoyez des données depuis un agent.</p>
         </div>
       {% endif %}
     </div>
   </div>
+
+  <script>
+    (function () {
+      const q = document.getElementById('q');
+      const sort = document.getElementById('sort');
+      const tbody = document.getElementById('tbody');
+      if (!tbody) return;
+
+      function applyFilterAndSort() {
+        const needle = (q.value || '').trim().toLowerCase();
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        // filter
+        for (const r of rows) {
+          const name = r.getAttribute('data-name') || '';
+          const show = !needle || name.includes(needle);
+          r.style.display = show ? '' : 'none';
+        }
+
+        // sort (only visible rows)
+        const visible = rows.filter(r => r.style.display !== 'none');
+        const mode = sort.value;
+
+        const cmp = (a, b) => {
+          const aid = parseInt(a.getAttribute('data-id') || '0', 10);
+          const bid = parseInt(b.getAttribute('data-id') || '0', 10);
+          const an = (a.getAttribute('data-name') || '');
+          const bn = (b.getAttribute('data-name') || '');
+          const adv = parseInt(a.getAttribute('data-dev') || '0', 10);
+          const bdv = parseInt(b.getAttribute('data-dev') || '0', 10);
+
+          switch (mode) {
+            case 'id_desc': return bid - aid;
+            case 'name_asc': return an.localeCompare(bn);
+            case 'name_desc': return bn.localeCompare(an);
+            case 'dev_asc': return adv - bdv;
+            case 'dev_desc': return bdv - adv;
+            case 'id_asc':
+            default: return aid - bid;
+          }
+        };
+
+        visible.sort(cmp);
+        for (const r of visible) tbody.appendChild(r);
+      }
+
+      q.addEventListener('input', applyFilterAndSort);
+      sort.addEventListener('change', applyFilterAndSort);
+      applyFilterAndSort();
+    })();
+  </script>
 </body>
 </html>

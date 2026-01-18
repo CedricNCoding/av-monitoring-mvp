@@ -3,65 +3,68 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
 
-# On importe les modules drivers. Chaque driver peut exposer
-# une des fonctions suivantes : check(), run(), probe(), collect()
-from src.drivers import ping as ping_driver
-from src.drivers import snmp as snmp_driver
-from src.drivers import pjlink as pjlink_driver
+from src.drivers.ping import probe as ping_probe
+from src.drivers.snmp import probe as snmp_probe
+from src.drivers.pjlink import probe as pjlink_probe
+
+# Type signature commune à nos drivers:
+# - device: dict (config device)
+# - retourne un dict d'observation (au minimum: status, detail, metrics...)
+DriverFn = Callable[[Dict[str, Any]], Dict[str, Any]]
 
 
-def _resolve_driver_fn(mod: Any) -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
+def get_registry() -> Dict[str, DriverFn]:
     """
-    Retourne la fonction callable du driver en étant tolérant sur le nom.
+    Registre officiel des drivers.
+
+    IMPORTANT:
+    - Les clés doivent être stables (ping/snmp/pjlink)
+    - Les fonctions doivent exposer une entrypoint homogène : probe(device) -> result dict
     """
-    for name in ("check", "run", "probe", "collect"):
-        fn = getattr(mod, name, None)
-        if callable(fn):
-            return fn
-    return None
-
-
-_DRIVER_MODULES: Dict[str, Any] = {
-    "ping": ping_driver,
-    "snmp": snmp_driver,
-    "pjlink": pjlink_driver,
-}
+    return {
+        "ping": ping_probe,
+        "snmp": snmp_probe,
+        "pjlink": pjlink_probe,
+    }
 
 
 def run_driver(driver: str, device: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Point d'entrée unique utilisé par collector.py.
-    Retourne toujours un dict standardisé :
-      { "status": "online|offline|unknown", "detail": "...|None", "metrics": {...} }
-    """
-    drv = (driver or device.get("driver") or "ping").strip().lower()
-    mod = _DRIVER_MODULES.get(drv)
-    if mod is None:
-        return {"status": "unknown", "detail": f"unknown_driver:{drv}", "metrics": {}}
+    Entry-point stable attendu par collector.py.
 
-    fn = _resolve_driver_fn(mod)
+    - driver: nom du driver (string)
+    - device: bloc device de la config
+    Retour:
+      dict avec a minima:
+        - status: "online"|"offline"|"unknown"
+        - detail: str optionnel
+        - metrics: dict optionnel
+    """
+    dname = (driver or "").strip().lower() or (device.get("driver") or "ping").strip().lower()
+
+    fn: Optional[DriverFn] = get_registry().get(dname)
     if fn is None:
-        return {"status": "unknown", "detail": f"{drv}_no_entrypoint", "metrics": {}}
+        return {
+            "status": "unknown",
+            "detail": f"unknown_driver:{dname}",
+            "metrics": {},
+        }
 
     try:
         out = fn(device)
-        if not isinstance(out, dict):
-            return {"status": "unknown", "detail": f"{drv}_bad_result", "metrics": {}}
-
-        status = (out.get("status") or "unknown").strip().lower()
-        detail = (out.get("detail") or "").strip() or None
-        metrics = out.get("metrics") if isinstance(out.get("metrics"), dict) else {}
-
-        return {"status": status, "detail": detail, "metrics": metrics}
     except Exception as e:
-        # On évite de tuer le collector pour un seul device
         return {
-            "status": "offline",
-            "detail": f"{drv}_error:{e.__class__.__name__}",
-            "metrics": {"error": str(e)},
+            "status": "unknown",
+            "detail": f"driver_error:{dname}:{e.__class__.__name__}:{e}",
+            "metrics": {},
         }
 
+    # Normalisation minimale (évite les KeyError plus loin)
+    if not isinstance(out, dict):
+        return {"status": "unknown", "detail": f"driver_invalid_return:{dname}", "metrics": {}}
 
-# Alias éventuel si du code plus ancien appelle "run"
-def run(driver: str, device: Dict[str, Any]) -> Dict[str, Any]:
-    return run_driver(driver, device)
+    out.setdefault("status", "unknown")
+    out.setdefault("detail", None)
+    out.setdefault("metrics", {} if isinstance(out.get("metrics"), dict) else {})
+
+    return out

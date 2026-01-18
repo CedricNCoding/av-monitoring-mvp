@@ -3,347 +3,299 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AV Monitoring — Device #{{ device.id }}</title>
+  <title>AV Monitoring — Device {{ device.id }}</title>
   <style>
-    :root{
-      --primary:#2563eb;
-      --primary-hover:#1d4ed8;
-      --bg:#f8fafc;
-      --card:#ffffff;
-      --text:#0f172a;
-      --muted:#64748b;
-      --border:#e2e8f0;
-      --shadow: 0 8px 20px rgba(2, 8, 23, 0.06);
-      --shadow-sm: 0 1px 3px rgba(2, 8, 23, 0.08);
-
-      --ok:#10b981;
-      --fault:#ef4444;
-      --expected:#0ea5e9;
-      --doubt:#f59e0b;
-      --unknown:#94a3b8;
-
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --radius: 14px;
-
-      --code-bg:#0b1220;
-      --code-border:#1f2a44;
-      --code-fg:#cbd5e1;
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --danger-bg: #fef2f2;
+      --success: #10b981;
+      --success-bg: #f0fdf4;
+      --warning: #f59e0b;
+      --warning-bg: #fffbeb;
+      --violet: #7c3aed;
+      --violet-bg: #f5f3ff;
+      --dark-code: #0f172a;
     }
 
-    *{ box-sizing:border-box; }
-
-    body{
-      margin:0;
-      padding:24px;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.5;
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
     }
 
-    .container{ max-width:1200px; margin:0 auto; }
+    .container { max-width: 1200px; margin: 0 auto; }
 
-    .back{
-      display:inline-flex;
-      align-items:center;
-      gap:10px;
-      text-decoration:none;
-      color:var(--muted);
-      font-weight:800;
-      font-size:13px;
-      padding:8px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,0.6);
-      box-shadow:var(--shadow-sm);
-      transition:transform .12s ease, color .12s ease;
-      margin-bottom:14px;
+    /* Header & Nav */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      margin-bottom: 20px;
+      transition: color 0.2s;
+      font-weight: 600;
     }
-    .back:hover{ transform:translateY(-1px); color:var(--primary); }
+    .back-link:hover { color: var(--primary); text-decoration: underline; }
 
-    h1{
-      margin:0;
-      font-size:24px;
-      font-weight:950;
-      letter-spacing:-0.02em;
+    header {
+      margin-bottom: 18px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
     }
-    .subtitle{
-      margin:6px 0 0 0;
-      color:var(--muted);
-      font-size:13px;
-    }
+    h1 { font-size: 26px; font-weight: 900; margin: 0; letter-spacing: -0.025em; }
+    .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
-    .header{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:16px;
+    /* Layout Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; margin-top: 18px; }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
-    .mono{ font-family:var(--mono); }
-    code{
-      font-family:var(--mono);
-      font-size:13px;
-      background:#f1f5f9;
-      padding:4px 8px;
-      border-radius:10px;
-      border:1px solid #e6edf6;
-      color:var(--primary);
-      font-weight:900;
+    h2 { font-size: 16px; font-weight: 900; margin: 0 0 14px 0; display: flex; align-items: center; gap: 8px; }
+
+    /* Tables */
+    table { border-collapse: collapse; width: 100%; }
+    th {
+      text-align: left;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-muted);
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+      width: 180px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; font-weight: 600; }
+    tr:last-child th, tr:last-child td { border-bottom: none; }
+
+    /* Elements */
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 6px; color: var(--primary); font-size: 0.9em; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .muted { color: var(--text-muted); font-size: 13px; font-weight: 500; }
+
+    pre {
+      background: var(--dark-code);
+      color: #94a3b8;
+      padding: 16px;
+      border-radius: 14px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid #334155;
+      margin: 0;
     }
 
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:8px 12px;
-      font-size:12px;
-      font-weight:950;
-      border:1px solid var(--border);
-      background:#ffffff;
-      color:var(--muted);
-      white-space:nowrap;
+    /* Badges */
+    .pill {
+      background: #f1f5f9;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    .grid{
-      display:grid;
-      grid-template-columns: repeat(2, minmax(320px, 1fr));
-      gap:14px;
-      margin-top:10px;
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid var(--border);
+      width: fit-content;
     }
 
-    .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:16px;
-    }
+    .dot { width: 8px; height: 8px; border-radius: 999px; display:inline-block; }
 
-    .card h2{
-      margin:0 0 12px 0;
-      font-size:12px;
-      color:var(--muted);
-      font-weight:950;
-      text-transform:uppercase;
-      letter-spacing:0.08em;
-    }
+    .badge.ok { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+    .badge.fault { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+    .badge.expected_off { border-color: var(--warning); color: var(--warning); background: var(--warning-bg); }
+    .badge.doubt { border-color: var(--violet); color: var(--violet); background: var(--violet-bg); }
+    .badge.unknown { border-color: var(--border); color: var(--text-muted); background: #f8fafc; }
 
-    table{
-      width:100%;
-      border-collapse:collapse;
-      font-size:13px;
-    }
+    .dot.ok { background: var(--success); }
+    .dot.fault { background: var(--danger); }
+    .dot.expected_off { background: var(--warning); }
+    .dot.doubt { background: var(--violet); }
+    .dot.unknown { background: var(--text-muted); }
 
-    th, td{
-      padding:10px 0;
-      border-bottom:1px solid #f1f5f9;
-      text-align:left;
-      vertical-align:top;
-    }
-
-    th{
-      width:180px;
-      color:var(--muted);
-      font-weight:900;
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:0.06em;
-    }
-
-    tr:last-child th, tr:last-child td{ border-bottom:none; }
-
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:6px 10px;
-      font-weight:950;
-      font-size:12px;
-      border:1px solid var(--border);
-      background:#ffffff;
-      white-space:nowrap;
-    }
-    .badge .dot{ width:8px; height:8px; border-radius:999px; background:var(--unknown); }
-
-    .badge.ok{ border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.08); color:#065f46; }
-    .badge.ok .dot{ background:var(--ok); }
-
-    .badge.fault{ border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.08); color:#7f1d1d; }
-    .badge.fault .dot{ background:var(--fault); }
-
-    .badge.expected_off{ border-color: rgba(14,165,233,0.25); background: rgba(14,165,233,0.08); color:#075985; }
-    .badge.expected_off .dot{ background:var(--expected); }
-
-    .badge.doubt{ border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.10); color:#7c2d12; }
-    .badge.doubt .dot{ background:var(--doubt); }
-
-    .badge.unknown{ border-color: rgba(148,163,184,0.35); background: rgba(148,163,184,0.10); color:#334155; }
-    .badge.unknown .dot{ background:var(--unknown); }
-
-    .muted{ color:var(--muted); font-size:13px; }
-    .warn{ color:#7c2d12; font-weight:800; }
-    .danger{ color:#7f1d1d; font-weight:900; }
-
-    .metrics-grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:12px;
-    }
-
-    .kv{
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:12px;
-      background:#ffffff;
-    }
-    .kv .k{
-      color:var(--muted);
-      font-size:12px;
-      font-weight:900;
-      text-transform:uppercase;
-      letter-spacing:0.06em;
-      margin-bottom:6px;
-    }
-    .kv .v{
-      font-family:var(--mono);
-      font-size:13px;
-      color:var(--text);
-      word-break:break-word;
-    }
-
-    pre{
-      background:var(--code-bg);
-      border:1px solid var(--code-border);
-      color:var(--code-fg);
-      padding:16px;
-      border-radius:var(--radius);
-      overflow:auto;
-      font-size:13px;
-      line-height:1.6;
-      box-shadow:var(--shadow);
-      margin-top:10px;
-    }
-
-    @media (max-width: 980px){
-      .grid{ grid-template-columns: 1fr; }
-      .metrics-grid{ grid-template-columns: 1fr; }
-      th{ width: 150px; }
-    }
+    .error-text { color: var(--danger); font-weight: 700; }
+    .soft { font-weight: 600; color: var(--text-main); }
   </style>
 </head>
 <body>
   <div class="container">
-    <a class="back" href="/ui/agents/{{ device.site_id }}/devices">← Retour aux équipements du site</a>
+    <a href="/ui/agents/{{ device.site_id }}/devices" class="back-link">← Retour aux équipements du site</a>
 
-    {% set verdict = device.verdict or (metrics.get('verdict') if metrics else '') or 'unknown' %}
+    {% set verdict = (device.verdict or "")|lower %}
+    {% set status = (device.status or "")|lower %}
 
-    <div class="header">
+    <header>
       <div>
-        <h1>Device #{{ device.id }} <span class="mono" style="color:var(--muted); font-weight:900;">({{ device.name }})</span></h1>
-        <div class="subtitle">Diagnostic détaillé et métriques. Driver : <code>{{ device.driver }}</code></div>
+        <h1>Device #{{ device.id }}</h1>
+        <div class="subtitle">Diagnostic détaillé et métriques (si disponibles)</div>
       </div>
 
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <span class="pill">Site <code>{{ device.site_id }}</code></span>
-        <span class="pill">IP <code>{{ device.ip }}</code></span>
+      <div style="display:flex; gap: 10px; flex-wrap: wrap; align-items:center;">
+        <span class="pill">Driver: <span class="mono">{{ device.driver or "—" }}</span></span>
 
+        {# Badge global : verdict > status #}
         {% if verdict == "ok" %}
-          <span class="badge ok"><span class="dot"></span>verdict: ok</span>
+          <span class="badge ok"><span class="dot ok"></span> ok</span>
         {% elif verdict == "fault" %}
-          <span class="badge fault"><span class="dot"></span>verdict: fault</span>
+          <span class="badge fault"><span class="dot fault"></span> fault</span>
         {% elif verdict == "expected_off" %}
-          <span class="badge expected_off"><span class="dot"></span>verdict: expected_off</span>
+          <span class="badge expected_off"><span class="dot expected_off"></span> expected_off</span>
         {% elif verdict == "doubt" %}
-          <span class="badge doubt"><span class="dot"></span>verdict: doubt</span>
+          <span class="badge doubt"><span class="dot doubt"></span> doubt</span>
         {% else %}
-          <span class="badge unknown"><span class="dot"></span>verdict: unknown</span>
+          {% if status == "online" %}
+            <span class="badge ok"><span class="dot ok"></span> online</span>
+          {% elif status == "offline" %}
+            <span class="badge fault"><span class="dot fault"></span> offline</span>
+          {% else %}
+            <span class="badge unknown"><span class="dot unknown"></span> {{ device.status or "unknown" }}</span>
+          {% endif %}
         {% endif %}
       </div>
-    </div>
+    </header>
 
     <div class="grid">
       <div class="card">
-        <h2>Inventaire</h2>
+        <h2>📂 Inventaire</h2>
         <table>
-          <tr><th>Nom</th><td><strong>{{ device.name }}</strong></td></tr>
-          <tr><th>Adresse IP</th><td><code>{{ device.ip }}</code></td></tr>
-          <tr><th>Type</th><td>{{ device.device_type or "—" }}</td></tr>
-          <tr><th>Driver</th><td><code>{{ device.driver }}</code></td></tr>
-          <tr><th>Localisation</th><td>{{ device.building or "—" }} / {{ device.room or "—" }}</td></tr>
+          <tr><th>Localisation</th><td class="soft">{{ device.building or "—" }} / {{ device.room or "—" }}</td></tr>
+          <tr><th>Nom</th><td class="soft">{{ device.name or "—" }}</td></tr>
+          <tr><th>Adresse IP</th><td><code>{{ device.ip or "—" }}</code></td></tr>
+          <tr><th>Type</th><td class="soft">{{ device.device_type or "—" }}</td></tr>
+          <tr><th>Site ID</th><td><code>{{ device.site_id }}</code></td></tr>
         </table>
       </div>
 
       <div class="card">
-        <h2>État & Télémetrie</h2>
+        <h2>⚡ État & Observations</h2>
         <table>
           <tr>
-            <th>Status</th>
-            <td>
-              {% if device.status == "online" %}
-                <span class="badge ok"><span class="dot"></span>online</span>
-              {% elif device.status == "offline" %}
-                <span class="badge fault"><span class="dot"></span>offline</span>
-              {% else %}
-                <span class="badge unknown"><span class="dot"></span>{{ device.status }}</span>
-              {% endif %}
-            </td>
+            <th>Status brut</th>
+            <td class="soft">{{ device.status or "—" }}</td>
+          </tr>
+          <tr>
+            <th>Verdict</th>
+            <td class="soft">{{ device.verdict or "—" }}</td>
           </tr>
           <tr>
             <th>Détail</th>
             <td>
               {% if device.detail %}
-                <span class="mono danger">{{ device.detail }}</span>
+                <span class="mono error-text">{{ device.detail }}</span>
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
             </td>
           </tr>
-          <tr><th>Last seen (UTC)</th><td class="mono muted">{{ device.last_seen or "—" }}</td></tr>
-          <tr><th>Last OK (UTC)</th><td class="mono muted">{{ device.last_ok_at or "—" }}</td></tr>
-          <tr><th>Uptime</th><td><span class="mono" style="font-weight:900; color:var(--primary);">{{ metrics.uptime_human or "—" }}</span></td></tr>
-          <tr><th>sysDescr</th><td class="muted">{{ metrics.sys_descr or metrics.sys_descr_short or "—" }}</td></tr>
+          <tr><th>Last seen (UTC)</th><td class="muted mono">{{ device.last_seen or "—" }}</td></tr>
+          <tr><th>Last OK (UTC)</th><td class="muted mono">{{ device.last_ok_at or "—" }}</td></tr>
+          <tr><th>Uptime</th><td class="soft" style="color:var(--primary)">{{ (metrics.uptime_human if metrics and metrics.uptime_human else "—") }}</td></tr>
         </table>
       </div>
     </div>
 
-    <div class="card" style="margin-top:14px;">
-      <h2>Métriques (principales)</h2>
+    <div class="card" style="margin-top: 18px;">
+      <h2>🔍 Détails driver / métriques</h2>
 
-      {% set keys = [] %}
-      {# on affiche un set “commun” + fallback keys arbitraires #}
-      <div class="metrics-grid">
-        <div class="kv">
-          <div class="k">snmp_ok</div>
-          <div class="v">{{ (metrics.get("snmp_ok") if metrics else None) or "—" }}</div>
-        </div>
-        <div class="kv">
-          <div class="k">pjlink_ok</div>
-          <div class="v">{{ (metrics.get("pjlink_ok") if metrics else None) or "—" }}</div>
-        </div>
-        <div class="kv">
-          <div class="k">verdict</div>
-          <div class="v">{{ verdict }}</div>
-        </div>
-        <div class="kv">
-          <div class="k">detail</div>
-          <div class="v">{{ device.detail or "—" }}</div>
-        </div>
-      </div>
+      {% set snmp_ok = (metrics.snmp_ok if metrics and metrics.snmp_ok is not none else none) %}
+      {% set sys_descr = (metrics.sys_descr if metrics and metrics.sys_descr else "") %}
+      {% set sys_uptime = (metrics.sys_uptime if metrics and metrics.sys_uptime is not none else none) %}
 
-      <div style="margin-top:12px;" class="muted">
-        Remarque : les métriques sont génériques (SNMP, PJLink, ping, etc.). La section JSON ci-dessous reste la référence.
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+        <table>
+          <tr>
+            <th>sysDescr</th>
+            <td class="muted" style="line-height: 1.4;">
+              {{ sys_descr or "—" }}
+            </td>
+          </tr>
+
+          <tr>
+            <th>SNMP OK</th>
+            <td class="soft">
+              {% if snmp_ok is none %}
+                <span class="muted">—</span>
+              {% else %}
+                {{ "✅ Oui" if snmp_ok else "❌ Non" }}
+              {% endif %}
+            </td>
+          </tr>
+
+          <tr>
+            <th>Driver metrics</th>
+            <td class="muted">
+              {# Exemples robustes, sans dépendre d'un driver spécifique #}
+              {% if metrics and metrics.get %}
+                {% if metrics.get("pjlink_ok") is not none %}
+                  PJLINK: <strong>{{ "OK" if metrics.get("pjlink_ok") else "KO" }}</strong>
+                {% elif metrics.get("ping_ms") is not none %}
+                  Ping: <strong>{{ metrics.get("ping_ms") }} ms</strong>
+                {% else %}
+                  —
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        </table>
+
+        <table>
+          <tr><th>sysUpTime brut</th><td class="muted mono">{{ sys_uptime if sys_uptime is not none else "—" }}</td></tr>
+          <tr><th>SNMP port</th><td><code>{{ (metrics.snmp_port if metrics and metrics.snmp_port else "161") }}</code></td></tr>
+          <tr>
+            <th>Dernière erreur driver</th>
+            <td class="muted">
+              {% if metrics and metrics.get and metrics.get("snmp_error") %}
+                <span class="mono error-text">{{ metrics.get("snmp_error") }}</span>
+              {% elif metrics and metrics.get and metrics.get("pjlink_error") %}
+                <span class="mono error-text">{{ metrics.get("pjlink_error") }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        </table>
       </div>
     </div>
 
-    <div style="margin-top:16px;">
-      <div class="muted" style="font-weight:950; text-transform:uppercase; letter-spacing:0.08em; font-size:12px;">
+    <div style="margin-top: 22px;">
+      <h2 class="muted" style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">
         Données brutes (JSON)
-      </div>
+      </h2>
       <pre>{{ metrics_json }}</pre>
     </div>
   </div>

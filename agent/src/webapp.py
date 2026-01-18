@@ -1,4 +1,6 @@
 # agent/src/webapp.py
+from __future__ import annotations
+
 import os
 import threading
 from typing import Any, Dict, Optional
@@ -19,6 +21,9 @@ _stop_flag = {"stop": True}
 _thread: Optional[threading.Thread] = None
 
 
+# ---------------------------------------------------------------------
+# Collector control
+# ---------------------------------------------------------------------
 def collector_running() -> bool:
     return _thread is not None and _thread.is_alive() and not _stop_flag["stop"]
 
@@ -36,41 +41,94 @@ def stop_collector() -> None:
     _stop_flag["stop"] = True
 
 
-def _safe_status() -> Dict[str, Any]:
+# ---------------------------------------------------------------------
+# Status normalization helpers
+# ---------------------------------------------------------------------
+def _as_dict(v: Any) -> Dict[str, Any]:
+    return v if isinstance(v, dict) else {}
+
+
+def _normalize_last_status(raw: Any) -> Dict[str, Any]:
     """
-    Garantit que le template peut toujours afficher status.* sans planter,
-    même au premier lancement (avant toute collecte).
+    Normalise le dict de statut pour éviter les incohérences template.
+
+    Objectifs:
+    - toujours renvoyer un dict (jamais None)
+    - assurer la présence des clés attendues
+    - exposer des alias backward compatibles:
+        - next_collect_in_s <-> next_send_in_s
+        - last_run_at <-> last_collect_at
+        - last_send_ok stable
     """
-    return {
-        "next_collect_in_s": None,
-        "last_run_at": None,
-        "last_send_ok": None,
-        "last_send_error": None,
+    s = _as_dict(raw)
+
+    # Valeurs usuelles venant de collector.py
+    # next_collect_in_s: int|None
+    # last_run_at: str|None (iso)
+    # last_send_ok: bool|None
+    # last_send_error: str|None
+
+    next_collect = s.get("next_collect_in_s", None)
+    if next_collect is None:
+        # certains templates/anciennes versions utilisaient next_send_in_s
+        next_collect = s.get("next_send_in_s", None)
+
+    # last_run_at alias
+    last_run_at = s.get("last_run_at", None)
+    if last_run_at is None:
+        last_run_at = s.get("last_collect_at", None)
+
+    # last_send_ok est la clé principale
+    last_send_ok = s.get("last_send_ok", None)
+    # tolérance si une ancienne version utilisait une autre clé
+    if last_send_ok is None and "send_ok" in s:
+        last_send_ok = s.get("send_ok")
+
+    last_send_error = s.get("last_send_error", None)
+    if last_send_error is None and "send_error" in s:
+        last_send_error = s.get("send_error")
+
+    normalized: Dict[str, Any] = {
+        # clés “canon”
+        "next_collect_in_s": next_collect,
+        "last_run_at": last_run_at,
+        "last_send_ok": last_send_ok,
+        "last_send_error": last_send_error,
     }
 
+    # Alias backward compatibles
+    normalized["next_send_in_s"] = normalized["next_collect_in_s"]
+    normalized["last_collect_at"] = normalized["last_run_at"]
 
+    # Conserve d'éventuelles infos additionnelles
+    # (par ex. last_payload_size, last_post_status, etc.)
+    for k, v in s.items():
+        if k not in normalized:
+            normalized[k] = v
+
+    return normalized
+
+
+# ---------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     cfg = load_config(CONFIG_PATH)
 
-    last_status = get_last_status()
-    if not isinstance(last_status, dict):
-        last_status = {}
+    raw = get_last_status()
+    last_status = _normalize_last_status(raw)
 
-    # Option A : le template utilise 'status' -> on l'expose systématiquement
-    status = _safe_status()
-    status.update(last_status)
+    # compat template: certains index.html utilisent "status" au lieu de "last_status"
+    context = {
+        "request": request,
+        "cfg": cfg,
+        "running": collector_running(),
+        "last_status": last_status,
+        "status": last_status,  # alias
+    }
 
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "cfg": cfg,
-            "running": collector_running(),
-            "last_status": last_status,  # on garde pour compat / debug
-            "status": status,            # <- FIX: évite UndefinedError
-        },
-    )
+    return templates.TemplateResponse("index.html", context)
 
 
 @app.post("/settings")
@@ -82,6 +140,7 @@ def update_settings(
     ko_interval_s: int = Form(60),
 ):
     cfg = load_config(CONFIG_PATH)
+
     cfg["api_url"] = (api_url or "").strip()
     cfg["site_name"] = (site_name or "").strip()
     cfg["site_token"] = (site_token or "").strip()
@@ -125,6 +184,7 @@ def add_device(
     ip = (ip or "").strip()
     if not ip:
         return RedirectResponse("/", status_code=303)
+
     if any((d.get("ip") or "").strip() == ip for d in cfg["devices"]):
         return RedirectResponse("/", status_code=303)
 
@@ -239,8 +299,6 @@ def update_device(
 ):
     cfg = load_config(CONFIG_PATH)
     devices = cfg.get("devices", [])
-    if not isinstance(devices, list):
-        devices = []
 
     original_ip = (original_ip or "").strip()
     ip = (ip or "").strip()
@@ -248,7 +306,7 @@ def update_device(
         return RedirectResponse("/", status_code=303)
 
     # collision si on change l'IP vers une autre déjà existante
-    if ip != original_ip and any((d.get("ip") or "").strip() == ip for d in devices if isinstance(d, dict)):
+    if ip != original_ip and any((d.get("ip") or "").strip() == ip for d in devices):
         return RedirectResponse("/", status_code=303)
 
     driver = (driver or "ping").strip().lower()
@@ -311,8 +369,6 @@ def update_device(
         }
 
     for d in devices:
-        if not isinstance(d, dict):
-            continue
         if (d.get("ip") or "").strip() == original_ip:
             d["ip"] = ip
             d["name"] = (name or "").strip()

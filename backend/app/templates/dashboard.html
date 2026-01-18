@@ -39,6 +39,19 @@
     h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.025em; margin: 0; }
     .muted { color: var(--text-muted); font-size: 14px; }
 
+    /* Navigation */
+    .nav-links a { 
+      color: var(--text-muted); 
+      margin-left: 16px; 
+      text-decoration: none; 
+      font-weight: 500;
+      font-size: 14px;
+    }
+    .nav-links a:hover { 
+      color: var(--primary); 
+      text-decoration: underline;
+    }
+
     /* KPIs */
     .kpis { 
       display: grid; 
@@ -54,7 +67,7 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .kpi .v { font-size: 32px; font-weight: 800; color: var(--primary); margin-top: 4px; }
-    
+
     /* Grid & Cards */
     .grid { 
       display: grid; 
@@ -87,23 +100,32 @@
     .pill.danger { background: var(--danger-bg); color: var(--danger); }
     .pill.ok { background: var(--success-bg); color: var(--success); }
 
-    /* Links & Buttons */
-    .actions { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; gap: 12px; }
-    a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
-    a:hover { text-decoration: underline; }
-    
-    .nav-links a { color: var(--text-muted); margin-left: 15px; }
-    .nav-links a:hover { color: var(--primary); }
+    /* Links */
+    .actions { 
+      margin-top: 20px; 
+      padding-top: 16px; 
+      border-top: 1px solid var(--border); 
+      display: flex; 
+      gap: 12px; 
+    }
+    .actions a { 
+      color: var(--primary); 
+      text-decoration: none; 
+      font-size: 14px; 
+      font-weight: 600; 
+    }
+    .actions a:hover { text-decoration: underline; }
 
     h2 { font-size: 20px; margin-bottom: 16px; font-weight: 700; }
   </style>
 </head>
 <body>
   <div class="container">
+    <!-- Topbar -->
     <div class="topbar">
       <div>
         <h1>Dashboard</h1>
-        <div class="muted">Vue synthétique exploitation</div>
+        <div class="muted">Vue synthétique de l’exploitation</div>
       </div>
       <nav class="nav-links">
         <a href="/ui/dashboard">Dashboard</a>
@@ -111,6 +133,7 @@
       </nav>
     </div>
 
+    <!-- KPIs globaux -->
     <div class="kpis">
       <div class="kpi">
         <div class="muted">Sites</div>
@@ -130,6 +153,7 @@
       </div>
     </div>
 
+    <!-- Sites -->
     <h2>Sites actifs</h2>
     <div class="grid">
       {% for s in site_cards %}
@@ -149,12 +173,12 @@
 
         <div class="row" style="margin-top:16px;">
           <div class="muted" style="font-size: 13px;">
-            Contact : <strong>{{ "Oui" if s.has_contact else "Non" }}</strong>
+            Contact configuré :
+            <strong>{{ "Oui" if s.has_contact else "Non" }}</strong>
           </div>
         </div>
 
         <div class="actions">
-          <a href="/ui/sites/{{ s.id }}">Détails site</a>
           <a href="/ui/agents/{{ s.id }}/devices">Équipements →</a>
         </div>
       </div>

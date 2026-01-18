@@ -1,167 +1,190 @@
 # agent/src/drivers/pjlink.py
-import hashlib
+from __future__ import annotations
+
 import socket
-from typing import Any, Dict, Optional, Tuple
+from hashlib import md5
+from typing import Any, Dict, Tuple
 
 
-DEFAULT_PORT = 4352
+def _as_int(v: Any, default: int) -> int:
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
 
 
-def _recv_line(sock: socket.socket, timeout_s: int) -> str:
-    sock.settimeout(timeout_s)
-    buf = b""
-    while True:
+def _as_str(v: Any) -> str:
+    try:
+        return str(v)
+    except Exception:
+        return ""
+
+
+def _recv_line(sock: socket.socket, max_bytes: int = 4096) -> str:
+    """
+    PJLink répond en ASCII/UTF-8 avec des fins de ligne \r\n.
+    On lit jusqu'à \n ou jusqu'au max.
+    """
+    data = b""
+    while len(data) < max_bytes:
         chunk = sock.recv(1)
         if not chunk:
             break
-        buf += chunk
-        if buf.endswith(b"\r") or buf.endswith(b"\n"):
+        data += chunk
+        if chunk == b"\n":
             break
-        if len(buf) > 4096:
-            break
-    return buf.decode("utf-8", errors="replace").strip()
-
-
-def _send(sock: socket.socket, s: str) -> None:
-    sock.sendall(s.encode("utf-8"))
-
-
-def _parse_handshake(line: str) -> Tuple[int, Optional[str]]:
-    """
-    PJLINK 0
-    PJLINK 1 <salt>
-    """
-    parts = (line or "").strip().split()
-    if len(parts) < 2 or parts[0].upper() != "PJLINK":
-        return (0, None)
     try:
-        auth = int(parts[1])
+        return data.decode("utf-8", errors="ignore").strip()
     except Exception:
-        auth = 0
-    salt = parts[2] if (auth == 1 and len(parts) >= 3) else None
-    return (auth, salt)
+        return ""
 
 
-def _wrap_cmd(cmd: str) -> str:
-    cmd = cmd.strip()
-    if not cmd.startswith("%1"):
-        cmd = "%1" + cmd
-    if not cmd.endswith("\r"):
-        cmd = cmd + "\r"
-    return cmd
+def _send_line(sock: socket.socket, line: str) -> None:
+    if not line.endswith("\r\n"):
+        line = line + "\r\n"
+    sock.sendall(line.encode("utf-8", errors="ignore"))
 
 
-def _query(sock: socket.socket, auth: int, salt: Optional[str], password: str, cmd: str, timeout_s: int) -> str:
+def _pjlink_handshake(sock: socket.socket, password: str) -> Tuple[bool, str, str]:
     """
-    En PJLink auth=1 : on envoie MD5(salt+password) + "%1XXXX ?\r"
-    En auth=0 : on envoie "%1XXXX ?\r"
+    PJLINK handshake.
+    Exemple de greeting:
+      "PJLINK 0"                 -> pas d'auth
+      "PJLINK 1 89ABCDEF"        -> auth required, salt/challenge = 89ABCDEF
+
+    Retour:
+      (auth_required_ok, challenge, greeting)
     """
-    payload = _wrap_cmd(cmd)
-    if auth == 1:
-        token = hashlib.md5((salt or "" + (password or "")).encode("utf-8")).hexdigest()
-        payload = token + payload
-    _send(sock, payload)
-    return _recv_line(sock, timeout_s)
+    greeting = _recv_line(sock)
+    if not greeting.upper().startswith("PJLINK"):
+        return False, "", greeting
+
+    parts = greeting.split()
+    if len(parts) < 2:
+        return False, "", greeting
+
+    mode = parts[1].strip()
+    if mode == "0":
+        return True, "", greeting
+
+    # mode "1" : auth obligatoire
+    if mode == "1" and len(parts) >= 3:
+        challenge = parts[2].strip()
+        if not password:
+            return False, challenge, greeting
+        return True, challenge, greeting
+
+    return False, "", greeting
 
 
-def _pjlink_cmd_response_value(line: str) -> str:
-    # Ex: "%1POWR=1" -> "1"
-    if "=" in (line or ""):
-        return line.split("=", 1)[1].strip()
-    return (line or "").strip()
-
-
-def probe(device: Dict[str, Any]) -> Dict[str, Any]:
+def _pjlink_auth_prefix(challenge: str, password: str) -> str:
     """
-    Probe PJLink minimal et robuste.
-    Retour standard:
-      status: online/offline/unknown
-      detail: pjlink_ok / pjlink_auth_failed / pjlink_timeout / ...
-      metrics: { power_state, lamp_hours, name, inf1, inf2, class }
+    Pour PJLink v1: prefix = MD5(challenge + password)
+    """
+    h = md5()
+    h.update((challenge + password).encode("utf-8", errors="ignore"))
+    return h.hexdigest()
+
+
+def _parse_pjlink_kv(resp: str) -> Tuple[str, str]:
+    """
+    Réponses typiques:
+      "%1POWR=0" / "%1POWR=1"
+      "%1POWR=ERR1" ...
+    """
+    resp = (resp or "").strip()
+    if "=" not in resp:
+        return resp, ""
+    k, v = resp.split("=", 1)
+    return k.strip(), v.strip()
+
+
+def collect(device: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Driver PJLink - convention d'entrypoint
+
+    Retour normalisé:
+      {
+        "status": "online"|"offline"|"unknown",
+        "detail": str,
+        "metrics": dict
+      }
+
+    Config supportée:
+      - ip: str (obligatoire)
+      - pjlink: { password, port, timeout_s }
+      - ou au niveau racine (tolérance): password/port/timeout_s
     """
     ip = (device.get("ip") or "").strip()
-    cfg = device.get("driver_cfg") or {}
-    if not isinstance(cfg, dict):
-        cfg = {}
+    if not ip:
+        return {"status": "unknown", "detail": "missing_ip", "metrics": {}}
 
-    port = int(cfg.get("port") or DEFAULT_PORT)
-    timeout_s = int(cfg.get("timeout_s") or 2)
-    password = (cfg.get("password") or "").strip()
+    pj_cfg = device.get("pjlink") or {}
+    if not isinstance(pj_cfg, dict):
+        pj_cfg = {}
+
+    password = (pj_cfg.get("password") or device.get("pjlink_password") or device.get("password") or "").strip()
+    port = _as_int(pj_cfg.get("port") or device.get("pjlink_port") or device.get("port") or 4352, 4352)
+    timeout_s = _as_int(pj_cfg.get("timeout_s") or device.get("pjlink_timeout_s") or device.get("timeout_s") or 2, 2)
+
+    port = max(1, port)
+    timeout_s = max(1, timeout_s)
 
     metrics: Dict[str, Any] = {
-        "pjlink_port": str(port),
+        "pjlink_ok": False,
+        "pjlink_port": port,
+        "pjlink_power": None,   # 0/1/2 selon PJLink (off/on/cooling/warming selon modèles)
+        "pjlink_class": None,   # souvent "%1"
+        "pjlink_greeting": None,
+        "pjlink_error": None,
     }
-
-    if not ip:
-        return {"status": "unknown", "detail": "pjlink_missing_ip", "metrics": metrics}
 
     try:
         with socket.create_connection((ip, port), timeout=timeout_s) as sock:
-            # Handshake
-            hello = _recv_line(sock, timeout_s)
-            auth, salt = _parse_handshake(hello)
+            sock.settimeout(timeout_s)
 
-            metrics["pjlink_auth"] = str(auth)
+            ok, challenge, greeting = _pjlink_handshake(sock, password)
+            metrics["pjlink_greeting"] = greeting
 
-            # Test commande "CLSS ?" (classe PJLink)
-            resp_clss = _query(sock, auth, salt, password, "CLSS ?", timeout_s)
-            # Si auth incorrect, certains proj renvoient ERR ou refusent
-            if "ERR" in (resp_clss or "").upper():
-                return {"status": "online", "detail": f"pjlink_err:{resp_clss}", "metrics": metrics}
+            if not ok:
+                metrics["pjlink_error"] = "pjlink_auth_required_missing_password" if challenge else "pjlink_bad_greeting"
+                return {"status": "offline", "detail": metrics["pjlink_error"], "metrics": metrics}
 
-            clss_val = _pjlink_cmd_response_value(resp_clss)
-            metrics["pjlink_class"] = clss_val
+            auth_prefix = ""
+            if challenge:
+                auth_prefix = _pjlink_auth_prefix(challenge, password)
 
-            # Power
-            resp_powr = _query(sock, auth, salt, password, "POWR ?", timeout_s)
-            powr_val = _pjlink_cmd_response_value(resp_powr)
-            # 0=off, 1=on, 2=cooling, 3=warm-up (selon PJLink)
-            metrics["power_state"] = powr_val
+            # Commande: power status
+            # PJLink: "POWR ?" -> réponse "%1POWR=0|1|2|3|ERRx"
+            cmd = f"{auth_prefix}%1POWR ?"
+            _send_line(sock, cmd)
+            resp = _recv_line(sock)
 
-            # NAME (nom PJLink)
-            resp_name = _query(sock, auth, salt, password, "NAME ?", timeout_s)
-            metrics["pjlink_name"] = _pjlink_cmd_response_value(resp_name)
+            k, v = _parse_pjlink_kv(resp)
+            metrics["pjlink_class"] = k[:2] if k.startswith("%") else None
 
-            # INF1/INF2 : infos fabricant / modèle (selon implémentation)
-            resp_inf1 = _query(sock, auth, salt, password, "INF1 ?", timeout_s)
-            resp_inf2 = _query(sock, auth, salt, password, "INF2 ?", timeout_s)
-            metrics["inf1"] = _pjlink_cmd_response_value(resp_inf1)
-            metrics["inf2"] = _pjlink_cmd_response_value(resp_inf2)
+            if "ERR" in v.upper():
+                metrics["pjlink_error"] = f"pjlink_{v.lower()}"
+                return {"status": "offline", "detail": metrics["pjlink_error"], "metrics": metrics}
 
-            # LAMP ? : heures de lampe (peut renvoyer plusieurs paires)
-            resp_lamp = _query(sock, auth, salt, password, "LAMP ?", timeout_s)
-            lamp_val = _pjlink_cmd_response_value(resp_lamp)
-            # souvent : "123 0" (heures + état) ou "123 0 456 0"
-            metrics["lamp_raw"] = lamp_val
-
-            # Heures lisibles (best-effort)
+            # v est normalement "0" ou "1" (parfois 2/3)
             try:
-                parts = lamp_val.split()
-                if len(parts) >= 1:
-                    metrics["lamp_hours"] = parts[0]
+                metrics["pjlink_power"] = int(v)
             except Exception:
-                pass
+                metrics["pjlink_power"] = v
 
-            # Status
-            # Si on a pu poser CLSS/POWR : online
-            detail = "pjlink_ok"
-            # détail plus parlant : état power
-            if powr_val == "0":
-                detail = "pjlink_ok_power_off"
-            elif powr_val == "1":
-                detail = "pjlink_ok_power_on"
-            elif powr_val == "2":
-                detail = "pjlink_ok_cooling"
-            elif powr_val == "3":
-                detail = "pjlink_ok_warmup"
+            metrics["pjlink_ok"] = True
 
-            return {"status": "online", "detail": detail, "metrics": metrics}
+            # Mapping simple: si on arrive à parler PJLink => online.
+            # L'état power, lui, sert aux métriques (et potentiellement à la logique côté expectations).
+            return {"status": "online", "detail": "pjlink_ok", "metrics": metrics}
 
-    except socket.timeout:
+    except (socket.timeout, TimeoutError):
+        metrics["pjlink_error"] = "pjlink_timeout"
         return {"status": "offline", "detail": "pjlink_timeout", "metrics": metrics}
-    except ConnectionRefusedError:
-        return {"status": "offline", "detail": "pjlink_conn_refused", "metrics": metrics}
     except OSError as e:
-        return {"status": "offline", "detail": f"pjlink_oserror:{str(e)[:120]}", "metrics": metrics}
+        metrics["pjlink_error"] = f"oserror: {_as_str(e)[:120]}"
+        return {"status": "offline", "detail": "pjlink_unreachable", "metrics": metrics}
     except Exception as e:
-        return {"status": "unknown", "detail": f"pjlink_error:{str(e)[:120]}", "metrics": metrics}
+        metrics["pjlink_error"] = f"{e.__class__.__name__}: {_as_str(e)[:200]}"
+        return {"status": "unknown", "detail": f"pjlink_exception: {e.__class__.__name__}", "metrics": metrics}

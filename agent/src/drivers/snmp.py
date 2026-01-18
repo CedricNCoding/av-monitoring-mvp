@@ -1,78 +1,127 @@
+# agent/src/drivers/snmp.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 from pysnmp.hlapi import (
-    SnmpEngine,
     CommunityData,
-    UdpTransportTarget,
     ContextData,
-    ObjectType,
     ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
     getCmd,
 )
 
-# OIDs "génériques" très utiles :
-# sysDescr.0 : description de l’équipement (souvent contient marque/modèle)
-SYS_DESCR_OID = "1.3.6.1.2.1.1.1.0"
-# sysUpTime.0 : uptime SNMP (permet de valider réponse SNMP)
-SYS_UPTIME_OID = "1.3.6.1.2.1.1.3.0"
+
+# OIDs “classiques”
+OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
+OID_SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
 
 
-def _snmp_get(ip: str, community: str, oid: str, port: int = 161, timeout_s: int = 1, retries: int = 1) -> Tuple[bool, Optional[str], Optional[str]]:
+def _as_int(v: Any, default: int) -> int:
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
+
+
+def _as_str(v: Any) -> str:
+    try:
+        return str(v)
+    except Exception:
+        return ""
+
+
+def collect(device: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Retourne: (ok, value, error)
+    Driver SNMP - convention d'entrypoint
+
+    Le registry appelle collect(device_cfg) et attend un dict normalisé:
+      {
+        "status": "online"|"offline"|"unknown",
+        "detail": str,
+        "metrics": dict
+      }
+
+    Config supportée:
+      - ip: str (obligatoire)
+      - snmp: { community, port, timeout_s, retries }
+      - community/port/timeout_s/retries peuvent aussi être au niveau racine (tolérance)
     """
+    ip = (device.get("ip") or "").strip()
+    if not ip:
+        return {"status": "unknown", "detail": "missing_ip", "metrics": {}}
+
+    snmp_cfg = device.get("snmp") or {}
+    if not isinstance(snmp_cfg, dict):
+        snmp_cfg = {}
+
+    community = (snmp_cfg.get("community") or device.get("community") or "public").strip() or "public"
+    port = _as_int(snmp_cfg.get("port") or device.get("port") or 161, 161)
+    timeout_s = _as_int(snmp_cfg.get("timeout_s") or device.get("timeout_s") or 1, 1)
+    retries = _as_int(snmp_cfg.get("retries") or device.get("retries") or 1, 1)
+
+    port = max(1, port)
+    timeout_s = max(1, timeout_s)
+    retries = max(0, retries)
+
+    # Pysnmp: timeout en secondes, retries = nb de retries supplémentaires
+    target = UdpTransportTarget((ip, port), timeout=float(timeout_s), retries=int(retries))
+
+    # NOTE: SNMP v2c par défaut (mpModel=1)
+    auth = CommunityData(community, mpModel=1)
+
+    metrics: Dict[str, Any] = {
+        "snmp_ok": False,
+        "snmp_port": port,
+        "community": community,
+        "sys_descr": None,
+        "sys_uptime": None,
+        "snmp_error": None,
+    }
+
     try:
         iterator = getCmd(
             SnmpEngine(),
-            CommunityData(community, mpModel=1),  # v2c
-            UdpTransportTarget((ip, port), timeout=timeout_s, retries=retries),
+            auth,
+            target,
             ContextData(),
-            ObjectType(ObjectIdentity(oid)),
+            ObjectType(ObjectIdentity(OID_SYS_DESCR)),
+            ObjectType(ObjectIdentity(OID_SYS_UPTIME)),
         )
 
-        error_indication, error_status, error_index, var_binds = next(iterator)
+        errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
 
-        if error_indication:
-            return False, None, str(error_indication)
+        if errorIndication:
+            # ex: timeout, unreachable, auth failure (parfois renvoyé ici)
+            metrics["snmp_error"] = _as_str(errorIndication)
+            return {"status": "offline", "detail": f"snmp_error: {metrics['snmp_error']}", "metrics": metrics}
 
-        if error_status:
-            return False, None, f"{error_status.prettyPrint()} at {error_index}"
+        if errorStatus:
+            # erreur SNMP sur un OID
+            msg = f"{errorStatus.prettyPrint()} at {int(errorIndex)}"
+            metrics["snmp_error"] = msg
+            return {"status": "offline", "detail": f"snmp_error: {msg}", "metrics": metrics}
 
-        # 1 OID => 1 valeur
-        for _name, val in var_binds:
-            return True, val.prettyPrint(), None
+        # OK
+        metrics["snmp_ok"] = True
+        for oid, val in varBinds:
+            oid_s = oid.prettyPrint()
+            if oid_s == OID_SYS_DESCR:
+                metrics["sys_descr"] = _as_str(val.prettyPrint())
+            elif oid_s == OID_SYS_UPTIME:
+                # souvent un TimeTicks => prettyPrint donne une valeur, mais on force int si possible
+                try:
+                    metrics["sys_uptime"] = int(val)
+                except Exception:
+                    metrics["sys_uptime"] = _as_int(val.prettyPrint(), 0)
 
-        return False, None, "empty_response"
+        return {"status": "online", "detail": "snmp_ok", "metrics": metrics}
 
+    except StopIteration:
+        metrics["snmp_error"] = "snmp_no_response"
+        return {"status": "offline", "detail": "snmp_no_response", "metrics": metrics}
     except Exception as e:
-        return False, None, str(e)
-
-
-def snmp_probe(device: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Probe SNMP générique :
-    - tente sysUpTime et sysDescr
-    - retourne un dict "résultat" utilisable dans collector.py
-    """
-    ip = (device.get("ip") or "").strip()
-    snmp_cfg = device.get("snmp") or {}
-
-    community = (snmp_cfg.get("community") or "public").strip()
-    port = int(snmp_cfg.get("port") or 161)
-    timeout_s = int(snmp_cfg.get("timeout_s") or 1)
-    retries = int(snmp_cfg.get("retries") or 1)
-
-    ok_uptime, uptime, err_uptime = _snmp_get(ip, community, SYS_UPTIME_OID, port, timeout_s, retries)
-    ok_descr, descr, err_descr = _snmp_get(ip, community, SYS_DESCR_OID, port, timeout_s, retries)
-
-    ok = ok_uptime or ok_descr
-    return {
-        "snmp_ok": ok,
-        "sys_uptime": uptime if ok_uptime else None,
-        "sys_descr": descr if ok_descr else None,
-        "snmp_error": err_uptime or err_descr,
-        "snmp_community": community,
-        "snmp_port": port,
-    }
+        metrics["snmp_error"] = f"{e.__class__.__name__}: {str(e)[:200]}"
+        return {"status": "unknown", "detail": f"snmp_exception: {e.__class__.__name__}", "metrics": metrics}
