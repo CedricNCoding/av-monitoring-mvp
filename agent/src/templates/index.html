@@ -135,6 +135,29 @@
           {% endif %}
         </div>
       </div>
+
+      {# Config Sync Status #}
+      <div style="border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px;">
+        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-muted);">🔄 Sync Backend</div>
+        <div class="muted">Dernière sync :
+          {% if sync_status is defined and sync_status.last_sync_ok is defined and sync_status.last_sync_ok is not none %}
+            <span style="color: {{ 'var(--success)' if sync_status.last_sync_ok else 'var(--danger)' }}">
+              {{ "✅ OK" if sync_status.last_sync_ok else "❌ Erreur" }}
+            </span>
+            {% if sync_status.last_sync_at %}
+              ({{ sync_status.last_sync_at[:19] }})
+            {% endif %}
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+        {% if sync_status is defined and sync_status.current_hash %}
+        <div class="muted" style="font-size: 11px;">Config hash: <code style="font-size: 10px;">{{ sync_status.current_hash[:8] }}...</code></div>
+        {% endif %}
+        {% if sync_status is defined and sync_status.last_sync_error %}
+        <div class="muted" style="color: var(--danger); font-size: 11px;">⚠️ {{ sync_status.last_sync_error }}</div>
+        {% endif %}
+      </div>
     </div>
   </div>
 

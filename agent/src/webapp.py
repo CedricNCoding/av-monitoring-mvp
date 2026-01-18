@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from src.storage import load_config, save_config
 from src.collector import run_forever, get_last_status, get_last_results
+from src.config_sync import start_sync_thread, get_sync_status
 
 CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
 
@@ -19,6 +20,10 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 
 _stop_flag = {"stop": True}
 _thread: Optional[threading.Thread] = None
+
+# Config sync
+_sync_thread: Optional[threading.Thread] = None
+_sync_stop_flag: Optional[Dict[str, bool]] = None
 
 
 # ---------------------------------------------------------------------
@@ -122,6 +127,9 @@ def index(request: Request):
     # Récupérer les derniers résultats de collecte
     last_results = get_last_results()
 
+    # Récupérer l'état de la synchronisation config
+    sync_status = get_sync_status()
+
     # compat template: certains index.html utilisent "status" au lieu de "last_status"
     context = {
         "request": request,
@@ -130,6 +138,7 @@ def index(request: Request):
         "last_status": last_status,
         "status": last_status,  # alias
         "last_results": last_results,  # résultats par IP
+        "sync_status": sync_status,  # état de la sync config
     }
 
     return templates.TemplateResponse("index.html", context)
@@ -417,3 +426,35 @@ def start_collector():
 def stop_collector_route():
     stop_collector()
     return RedirectResponse("/", status_code=303)
+
+
+# ---------------------------------------------------------------------
+# Startup: démarrer le thread de synchronisation config
+# ---------------------------------------------------------------------
+@app.on_event("startup")
+def startup_event():
+    """
+    Démarre automatiquement le thread de synchronisation au démarrage de l'app.
+    """
+    global _sync_thread, _sync_stop_flag
+
+    if _sync_thread is None or not _sync_thread.is_alive():
+        # Lire l'intervalle de sync depuis une variable d'environnement (défaut: 5 min)
+        try:
+            sync_interval = int(os.getenv("CONFIG_SYNC_INTERVAL_MIN", "5"))
+        except Exception:
+            sync_interval = 5
+
+        _sync_thread, _sync_stop_flag = start_sync_thread(interval_minutes=sync_interval)
+        print(f"✅ Config sync thread started (interval: {sync_interval} min)")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """
+    Arrête proprement le thread de synchronisation.
+    """
+    global _sync_stop_flag
+    if _sync_stop_flag is not None:
+        _sync_stop_flag["stop"] = True
+        print("🛑 Config sync thread stopped")

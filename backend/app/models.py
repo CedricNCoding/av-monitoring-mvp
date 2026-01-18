@@ -19,6 +19,16 @@ class Site(Base):
     name = Column(String, nullable=False, unique=True)
     token = Column(String, nullable=False, unique=True)
 
+    # Configuration globale du site
+    timezone = Column(String, nullable=False, default="Europe/Paris")
+    doubt_after_days = Column(Integer, nullable=False, default=2)
+    ok_interval_s = Column(Integer, nullable=False, default=300)
+    ko_interval_s = Column(Integer, nullable=False, default=60)
+
+    # Versioning de la configuration (pour sync agent)
+    config_version = Column(String, nullable=True)  # MD5 hash
+    config_updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     # Contact (dashboard / escalade)
     contact_first_name = Column(String, nullable=True)
     contact_last_name = Column(String, nullable=True)
@@ -39,7 +49,14 @@ class Device(Base):
 
     driver = Column(String, nullable=False, default="ping")
     building = Column(String, nullable=True)
+    floor = Column(String, nullable=True)
     room = Column(String, nullable=True)
+
+    # Configuration des drivers (SNMP, PJLink, etc.)
+    driver_config = Column(JSONB, nullable=False, default=dict)
+
+    # Expectations et scheduling
+    expectations = Column(JSONB, nullable=False, default=dict)
 
     last_seen = Column(DateTime(timezone=True), nullable=True)
     last_ok_at = Column(DateTime(timezone=True), nullable=True)
@@ -47,7 +64,7 @@ class Device(Base):
     detail = Column(String, nullable=True)
     verdict = Column(String, nullable=True)
 
-    # Metrics SNMP / autres drivers
+    # Metrics SNMP / autres drivers (données collectées)
     metrics = Column(JSONB, nullable=False, default=dict)
 
     __table_args__ = (UniqueConstraint("site_id", "ip", name="uq_site_ip"),)

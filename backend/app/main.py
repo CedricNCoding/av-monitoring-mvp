@@ -1,6 +1,7 @@
 # backend/app/main.py
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -541,6 +542,105 @@ def ingest(
         upserted += 1
 
     return {"ok": True, "upserted": upserted}
+
+
+# ------------------------------------------------------------
+# Config sync endpoint (Agent Pull)
+# ------------------------------------------------------------
+def _compute_config_hash(site: Site, devices: List[Device]) -> str:
+    """
+    Calcule un hash MD5 de la configuration complète du site.
+    Ce hash permet à l'agent de détecter rapidement si la config a changé.
+    """
+    config_data = {
+        "site_name": site.name,
+        "timezone": site.timezone or "Europe/Paris",
+        "doubt_after_days": site.doubt_after_days or 2,
+        "ok_interval_s": site.ok_interval_s or 300,
+        "ko_interval_s": site.ko_interval_s or 60,
+        "devices": []
+    }
+
+    for d in sorted(devices, key=lambda x: x.ip):
+        device_data = {
+            "ip": d.ip,
+            "name": d.name,
+            "building": d.building or "",
+            "floor": d.floor or "",
+            "room": d.room or "",
+            "type": d.device_type,
+            "driver": d.driver,
+            "driver_config": d.driver_config or {},
+            "expectations": d.expectations or {},
+        }
+        config_data["devices"].append(device_data)
+
+    # Serialization JSON déterministe
+    json_str = json.dumps(config_data, sort_keys=True, ensure_ascii=False)
+    return hashlib.md5(json_str.encode('utf-8')).hexdigest()
+
+
+@app.get("/config/{site_token}")
+def get_config(site_token: str, db: Session = Depends(get_db)):
+    """
+    Endpoint de synchronisation pull pour l'agent.
+
+    L'agent appelle cet endpoint régulièrement avec son token.
+    Le backend répond avec:
+    - config_hash: empreinte MD5 de la configuration
+    - site_name, timezone, doubt_after_days, etc.
+    - devices[]: liste complète des équipements avec leur configuration
+
+    L'agent compare config_hash avec sa version locale et met à jour si nécessaire.
+    """
+    site = db.query(Site).filter(Site.token == site_token).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Invalid site token")
+
+    devices = db.query(Device).filter(Device.site_id == site.id).all()
+
+    # Calculer le hash de la config actuelle
+    config_hash = _compute_config_hash(site, devices)
+
+    # Mettre à jour le config_version dans la DB si changé
+    if site.config_version != config_hash:
+        site.config_version = config_hash
+        site.config_updated_at = _now_utc()
+        db.commit()
+
+    # Construire la réponse
+    devices_config = []
+    for d in devices:
+        driver_cfg = _as_dict(d.driver_config or {})
+        expectations = _as_dict(d.expectations or {})
+
+        device_data = {
+            "ip": d.ip,
+            "name": d.name,
+            "building": d.building or "",
+            "floor": d.floor or "",
+            "room": d.room or "",
+            "type": d.device_type,
+            "driver": d.driver,
+            "snmp": driver_cfg.get("snmp", {}),
+            "pjlink": driver_cfg.get("pjlink", {}),
+            "expectations": expectations,
+        }
+        devices_config.append(device_data)
+
+    response = {
+        "config_hash": config_hash,
+        "site_name": site.name,
+        "timezone": site.timezone or "Europe/Paris",
+        "doubt_after_days": site.doubt_after_days or 2,
+        "reporting": {
+            "ok_interval_s": site.ok_interval_s or 300,
+            "ko_interval_s": site.ko_interval_s or 60,
+        },
+        "devices": devices_config,
+    }
+
+    return response
 
 
 # ------------------------------------------------------------
