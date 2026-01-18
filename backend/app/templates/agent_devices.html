@@ -515,6 +515,7 @@
                   <td class="muted mono">{{ d.last_seen or "—" }}</td>
 
                   <td style="text-align:right;">
+                    <button onclick="openEditModal({{ d.id }}, '{{ d.ip }}', '{{ d.name }}', '{{ d.building }}', '{{ d.floor }}', '{{ d.room }}', '{{ d.device_type }}', '{{ d.driver }}')" style="padding: 4px 10px; font-size: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 4px;">✏️ Modif.</button>
                     <form method="post" action="/ui/devices/{{ d.id }}/delete" style="display:inline;" onsubmit="return confirm('Supprimer cet équipement ?');">
                       <button type="submit" class="btn-danger" style="padding: 4px 10px; font-size: 12px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">🗑️ Suppr.</button>
                     </form>
@@ -530,7 +531,139 @@
     {% endfor %}
   </div>
 
+  <!-- Modal de modification d'équipement -->
+  <div id="editModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+    <div style="max-width: 800px; margin: 40px auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700;">✏️ Modifier l'équipement</h2>
+        <button onclick="closeEditModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
+      </div>
+
+      <form id="editForm" method="post" action="">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">IP *</label>
+            <input type="text" id="edit-ip" name="ip" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Nom</label>
+            <input type="text" id="edit-name" name="name" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Bâtiment</label>
+            <input type="text" id="edit-building" name="building" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Étage</label>
+            <input type="text" id="edit-floor" name="floor" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Salle</label>
+            <input type="text" id="edit-room" name="room" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Type</label>
+            <input type="text" id="edit-type" name="device_type" value="unknown" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12px; margin-bottom: 4px;">Driver</label>
+            <select id="edit-driver" name="driver" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+              <option value="ping">ping</option>
+              <option value="snmp">snmp</option>
+              <option value="pjlink">pjlink</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SNMP Config -->
+        <div id="edit-snmp-config" style="display: none; background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);">
+          <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted);">Configuration SNMP</h4>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Community</label>
+              <input type="text" name="snmp_community" value="public" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Port</label>
+              <input type="number" name="snmp_port" value="161" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Timeout (s)</label>
+              <input type="number" name="snmp_timeout_s" value="1" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Retries</label>
+              <input type="number" name="snmp_retries" value="1" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- PJLink Config -->
+        <div id="edit-pjlink-config" style="display: none; background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);">
+          <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted);">Configuration PJLink</h4>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Password</label>
+              <input type="text" name="pjlink_password" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Port</label>
+              <input type="number" name="pjlink_port" value="4352" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 11px; margin-bottom: 4px;">Timeout (s)</label>
+              <input type="number" name="pjlink_timeout_s" value="2" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;">
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" onclick="closeEditModal()" style="padding: 10px 20px; font-size: 14px; background: #64748b; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Annuler</button>
+          <button type="submit" style="padding: 10px 20px; font-size: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">💾 Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
+    // ===================================================================
+    // Modal de modification
+    // ===================================================================
+    function openEditModal(id, ip, name, building, floor, room, type, driver) {
+      document.getElementById('editModal').style.display = 'block';
+      document.getElementById('editForm').action = '/ui/devices/' + id + '/update';
+      document.getElementById('edit-ip').value = ip || '';
+      document.getElementById('edit-name').value = name || '';
+      document.getElementById('edit-building').value = building || '';
+      document.getElementById('edit-floor').value = floor || '';
+      document.getElementById('edit-room').value = room || '';
+      document.getElementById('edit-type').value = type || 'unknown';
+      document.getElementById('edit-driver').value = driver || 'ping';
+
+      // Afficher/masquer les configs driver
+      const driverValue = driver || 'ping';
+      document.getElementById('edit-snmp-config').style.display = driverValue === 'snmp' ? 'block' : 'none';
+      document.getElementById('edit-pjlink-config').style.display = driverValue === 'pjlink' ? 'block' : 'none';
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    // Toggle driver config sections in edit modal
+    document.getElementById('edit-driver').addEventListener('change', function() {
+      const driver = this.value;
+      document.getElementById('edit-snmp-config').style.display = driver === 'snmp' ? 'block' : 'none';
+      document.getElementById('edit-pjlink-config').style.display = driver === 'pjlink' ? 'block' : 'none';
+    });
+
+    // Fermer le modal en cliquant en dehors
+    document.getElementById('editModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeEditModal();
+      }
+    });
+
     // ===================================================================
     // Système de filtrage par localisation
     // ===================================================================

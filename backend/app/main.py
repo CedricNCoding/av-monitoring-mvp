@@ -774,6 +774,97 @@ def create_device(
     return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
 
 
+@app.post("/ui/devices/{device_id}/update")
+def update_device_from_backend(
+    device_id: int,
+    ip: str = Form(...),
+    name: str = Form(""),
+    building: str = Form(""),
+    floor: str = Form(""),
+    room: str = Form(""),
+    device_type: str = Form("unknown"),
+    driver: str = Form("ping"),
+    # SNMP
+    snmp_community: str = Form("public"),
+    snmp_port: int = Form(161),
+    snmp_timeout_s: int = Form(1),
+    snmp_retries: int = Form(1),
+    # PJLink
+    pjlink_password: str = Form(""),
+    pjlink_port: int = Form(4352),
+    pjlink_timeout_s: int = Form(2),
+    db: Session = Depends(get_db),
+):
+    """Met à jour un équipement existant."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    site_id = device.site_id
+    ip = (ip or "").strip()
+    if not ip:
+        return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+    # Vérifier collision IP (sauf si c'est la même IP)
+    if ip != device.ip:
+        existing = db.query(Device).filter(
+            Device.site_id == site_id,
+            Device.ip == ip,
+            Device.id != device_id
+        ).first()
+        if existing:
+            return RedirectResponse(f"/ui/agents/{site_id}/devices", status_code=303)
+
+    driver = (driver or "ping").strip().lower()
+
+    # Driver configs
+    snmp_block = {}
+    if driver == "snmp":
+        snmp_block = {
+            "community": (snmp_community or "public").strip(),
+            "port": max(1, snmp_port),
+            "timeout_s": max(1, snmp_timeout_s),
+            "retries": max(0, snmp_retries),
+        }
+
+    pj_block = {}
+    if driver == "pjlink":
+        pj_block = {
+            "password": (pjlink_password or "").strip(),
+            "port": max(1, pjlink_port),
+            "timeout_s": max(1, pjlink_timeout_s),
+        }
+
+    driver_config = {}
+    if snmp_block:
+        driver_config["snmp"] = snmp_block
+    if pj_block:
+        driver_config["pjlink"] = pj_block
+
+    # Mettre à jour l'équipement
+    device.ip = ip
+    device.name = (name or "").strip()
+    device.building = (building or "").strip()
+    device.floor = (floor or "").strip()
+    device.room = (room or "").strip()
+    device.device_type = (device_type or "unknown").strip()
+    device.driver = driver
+    device.driver_config = driver_config
+
+    db.commit()
+
+    # Mettre à jour le config_hash pour déclencher la sync agent
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if site:
+        devices = db.query(Device).filter(Device.site_id == site_id).all()
+        new_hash = _compute_config_hash(site, devices)
+        site.config_version = new_hash
+        site.config_updated_at = _now_utc()
+        db.commit()
+
+    return RedirectResponse(f"/ui/agents/{site_id}/devices?saved=1", status_code=303)
+
+
 @app.post("/ui/devices/{device_id}/delete")
 def delete_device(device_id: int, db: Session = Depends(get_db)):
     """Supprime un équipement et ses événements associés."""
