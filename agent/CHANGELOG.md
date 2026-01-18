@@ -5,6 +5,29 @@ All notable changes to the AV Monitoring Agent will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2024-01-18
+
+### Added
+- 🚀 **Démarrage automatique du collector** au lancement du service systemd
+  - Le collector démarre automatiquement avec l'application (comme en Docker)
+  - Aucun clic manuel requis dans l'interface web
+  - Les équipements remontent immédiatement leur statut au backend
+  - Voir [CHANGELOG-COLLECTOR.md](CHANGELOG-COLLECTOR.md) pour les détails
+
+### Fixed
+- 🐛 **Collector ne démarrant jamais automatiquement** en installation native
+  - Avant : Le service systemd démarrait seulement l'interface web
+  - Avant : Les équipements remontaient tous "offline" côté backend
+  - Avant : Le collector ne démarrait que lors d'un clic sur "Start" dans l'UI
+  - Après : Le collector démarre automatiquement au lancement du service
+  - Après : Arrêt propre du collector lors du shutdown de l'application
+
+### Changed
+- 🔧 Fonction `startup_event()` dans [src/webapp.py:449](src/webapp.py#L449) - Appelle maintenant `ensure_collector_running()`
+- 🔧 Fonction `shutdown_event()` dans [src/webapp.py:475](src/webapp.py#L475) - Arrête proprement le collector
+
+---
+
 ## [1.0.0] - 2024-01-18
 
 ### Added

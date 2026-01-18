@@ -448,10 +448,11 @@ def trigger_sync():
 @app.on_event("startup")
 def startup_event():
     """
-    Démarre automatiquement le thread de synchronisation au démarrage de l'app.
+    Démarre automatiquement le thread de synchronisation ET le collector au démarrage de l'app.
     """
     global _sync_thread, _sync_stop_flag
 
+    # Démarrer le thread de synchronisation config
     if _sync_thread is None or not _sync_thread.is_alive():
         # Lire l'intervalle de sync depuis une variable d'environnement (défaut: 5 min)
         try:
@@ -462,13 +463,28 @@ def startup_event():
         _sync_thread, _sync_stop_flag = start_sync_thread(interval_minutes=sync_interval)
         print(f"✅ Config sync thread started (interval: {sync_interval} min)")
 
+    # Démarrer automatiquement le collector
+    print("🚀 Starting collector automatically...")
+    ensure_collector_running()
+    if collector_running():
+        print("✅ Collector started successfully")
+    else:
+        print("⚠️  Collector failed to start (check configuration)")
+
 
 @app.on_event("shutdown")
 def shutdown_event():
     """
-    Arrête proprement le thread de synchronisation.
+    Arrête proprement le thread de synchronisation ET le collector.
     """
-    global _sync_stop_flag
+    global _sync_stop_flag, _stop_flag
+
+    # Arrêter le collector
+    if _stop_flag is not None:
+        print("🛑 Stopping collector...")
+        _stop_flag["stop"] = True
+
+    # Arrêter la sync config
     if _sync_stop_flag is not None:
         _sync_stop_flag["stop"] = True
         print("🛑 Config sync thread stopped")
