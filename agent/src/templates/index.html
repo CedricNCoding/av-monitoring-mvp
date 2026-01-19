@@ -71,7 +71,7 @@
       <form method="post" action="/settings">
         <div class="form-group">
           <label>URL d'Ingestion API</label>
-          <input name="api_url" value="{{ cfg.api_url }}" placeholder="http://server-ip:8000/ingest">
+          <input name="api_url" value="{{ cfg.backend_url or cfg.api_url }}" placeholder="http://server-ip:8000/ingest">
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
