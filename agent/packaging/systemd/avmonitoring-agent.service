@@ -23,5 +23,9 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/avmonitoring /var/log/avmonitoring /etc/avmonitoring
 
+# Capabilities pour ping ICMP sans root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+
 [Install]
 WantedBy=multi-user.target
