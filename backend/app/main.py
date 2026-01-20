@@ -1038,6 +1038,13 @@ def api_sites_map_data(db: Session = Depends(get_db)):
         if not site.latitude or not site.longitude:
             continue  # Skip sites sans coordonnées
 
+        # Valider et convertir les coordonnées
+        try:
+            lat = float(site.latitude.strip())
+            lon = float(site.longitude.strip())
+        except (ValueError, AttributeError):
+            continue  # Skip si conversion impossible
+
         # Compter les devices et leur statut
         devices = db.query(Device).filter(Device.site_id == site.id).all()
         total = len(devices)
@@ -1056,9 +1063,9 @@ def api_sites_map_data(db: Session = Depends(get_db)):
         map_data.append({
             "site_id": site.id,
             "site_name": site.name,
-            "address": site.address,
-            "latitude": float(site.latitude),
-            "longitude": float(site.longitude),
+            "address": site.address or "",
+            "latitude": lat,
+            "longitude": lon,
             "color": color,
             "devices_total": total,
             "devices_online": online,

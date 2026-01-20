@@ -328,9 +328,16 @@
 
   // Charger les données des sites
   fetch('/api/sites/map-data')
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.json();
+    })
     .then(data => {
-      if (data.sites.length === 0) {
+      console.log('Map data loaded:', data);
+
+      if (!data.sites || data.sites.length === 0) {
         document.getElementById('map').innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);">Aucun site avec coordonnées GPS configurées</div>';
         return;
       }
