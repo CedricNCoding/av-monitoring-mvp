@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {
       --primary: #2563eb;
@@ -219,6 +221,12 @@
       </div>
     </div>
 
+    <!-- Carte des sites -->
+    <div class="card" style="margin-bottom: 32px;">
+      <h2>📍 Carte des sites</h2>
+      <div id="map" style="height: 500px; border-radius: 8px;"></div>
+    </div>
+
     <!-- Sites -->
     <h2>Sites actifs</h2>
     <div class="grid">
@@ -307,5 +315,62 @@
     </div>
     {% endif %}
   </div>
+
+  <script>
+  // Initialiser la carte (centré sur France par défaut)
+  const map = L.map('map').setView([46.603354, 1.888334], 6);
+
+  // Ajouter le fond de carte OpenStreetMap
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Charger les données des sites
+  fetch('/api/sites/map-data')
+    .then(res => res.json())
+    .then(data => {
+      if (data.sites.length === 0) {
+        document.getElementById('map').innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);">Aucun site avec coordonnées GPS configurées</div>';
+        return;
+      }
+
+      data.sites.forEach(site => {
+        // Créer une icône colorée selon le statut
+        const icon = L.divIcon({
+          className: 'custom-marker',
+          html: `<div style="background-color: ${site.color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+
+        // Ajouter le marker
+        const marker = L.marker([site.latitude, site.longitude], { icon }).addTo(map);
+
+        // Popup avec infos
+        marker.bindPopup(`
+          <div style="min-width: 200px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 16px;">${site.site_name}</h3>
+            <p style="margin: 0 0 12px 0; color: #64748b; font-size: 13px;">${site.address || 'Adresse non renseignée'}</p>
+            <div style="font-size: 14px; line-height: 1.8;">
+              <div><strong>Équipements:</strong></div>
+              <div>🟢 Online: ${site.devices_online}</div>
+              <div>🔴 Offline: ${site.devices_offline}</div>
+              <div>⚪ Unknown: ${site.devices_unknown}</div>
+            </div>
+            <a href="/ui/agents/${site.site_id}/devices" style="display: inline-block; margin-top: 12px; color: #2563eb; font-weight: 600; text-decoration: none;">Voir détails →</a>
+          </div>
+        `);
+      });
+
+      // Ajuster la vue pour afficher tous les markers
+      const bounds = L.latLngBounds(data.sites.map(s => [s.latitude, s.longitude]));
+      map.fitBounds(bounds, { padding: [50, 50] });
+    })
+    .catch(err => {
+      console.error('Erreur chargement carte:', err);
+      document.getElementById('map').innerHTML = '<div style="display: flex; align-items: center; justify-center; height: 100%; color: var(--danger);">Erreur de chargement de la carte</div>';
+    });
+  </script>
 </body>
 </html>

@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Device {{ device.id }}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --primary: #2563eb;
@@ -292,6 +293,21 @@
       </div>
     </div>
 
+    <!-- Historique et Disponibilité -->
+    <div class="grid" style="margin-top: 18px;">
+      <div class="card">
+        <h2>📊 Historique (30 derniers jours)</h2>
+        <canvas id="historyChart" style="max-height: 300px;"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>📈 Disponibilité (30 derniers jours)</h2>
+        <div id="uptimeStats" style="text-align: center; padding: 20px;">
+          <div class="muted">Chargement...</div>
+        </div>
+      </div>
+    </div>
+
     <div style="margin-top: 22px;">
       <h2 class="muted" style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">
         Données brutes (JSON)
@@ -299,5 +315,152 @@
       <pre>{{ metrics_json }}</pre>
     </div>
   </div>
+
+  <script>
+  // Charger l'historique du device
+  const deviceId = {{ device.id }};
+
+  // Fetch history data
+  fetch(`/api/devices/${deviceId}/history?days=30`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.events || data.events.length === 0) {
+        document.getElementById('historyChart').parentElement.innerHTML =
+          '<h2>📊 Historique (30 derniers jours)</h2><div style="text-align:center; padding:40px; color:var(--text-muted);">Aucun événement enregistré</div>';
+        return;
+      }
+
+      // Préparer les données pour Chart.js
+      const labels = data.events.map(e => {
+        const date = new Date(e.timestamp);
+        return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' +
+               date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      });
+
+      const statusData = data.events.map(e => {
+        // Convertir status en valeur numérique pour le graphique
+        if (e.status === 'online') return 1;
+        if (e.status === 'offline') return 0;
+        return 0.5; // unknown
+      });
+
+      const backgroundColors = data.events.map(e => {
+        if (e.status === 'online') return 'rgba(34, 197, 94, 0.2)';
+        if (e.status === 'offline') return 'rgba(239, 68, 68, 0.2)';
+        return 'rgba(148, 163, 184, 0.2)';
+      });
+
+      const borderColors = data.events.map(e => {
+        if (e.status === 'online') return 'rgba(34, 197, 94, 1)';
+        if (e.status === 'offline') return 'rgba(239, 68, 68, 1)';
+        return 'rgba(148, 163, 184, 1)';
+      });
+
+      // Créer le graphique
+      const ctx = document.getElementById('historyChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Status',
+            data: statusData,
+            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+            borderColor: 'rgba(37, 99, 235, 1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.1,
+            pointBackgroundColor: backgroundColors,
+            pointBorderColor: borderColors,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const event = data.events[context.dataIndex];
+                  let label = 'Status: ' + event.status;
+                  if (event.verdict) {
+                    label += ' | Verdict: ' + event.verdict;
+                  }
+                  if (event.detail) {
+                    label += ' | ' + event.detail;
+                  }
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 1,
+              ticks: {
+                callback: function(value) {
+                  if (value === 1) return 'Online';
+                  if (value === 0) return 'Offline';
+                  return 'Unknown';
+                }
+              }
+            },
+            x: {
+              ticks: {
+                maxRotation: 45,
+                minRotation: 45,
+                maxTicksLimit: 20
+              }
+            }
+          }
+        }
+      });
+    })
+    .catch(err => {
+      console.error('Erreur chargement historique:', err);
+      document.getElementById('historyChart').parentElement.innerHTML =
+        '<h2>📊 Historique (30 derniers jours)</h2><div style="text-align:center; padding:40px; color:var(--danger);">Erreur de chargement</div>';
+    });
+
+  // Fetch uptime data
+  fetch(`/api/devices/${deviceId}/uptime?days=30`)
+    .then(res => res.json())
+    .then(data => {
+      const uptimePercent = data.uptime_percent || 0;
+      const color = uptimePercent >= 95 ? 'var(--success)' : (uptimePercent >= 80 ? 'var(--warning)' : 'var(--danger)');
+
+      document.getElementById('uptimeStats').innerHTML = `
+        <div style="font-size: 48px; font-weight: 900; color: ${color}; margin-bottom: 12px;">
+          ${uptimePercent}%
+        </div>
+        <div class="muted" style="margin-bottom: 20px;">Taux de disponibilité sur 30 jours</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; text-align: center; margin-top: 20px;">
+          <div>
+            <div style="font-size: 24px; font-weight: 700; color: var(--text-main);">${data.total_events}</div>
+            <div class="muted" style="font-size: 12px;">Événements</div>
+          </div>
+          <div>
+            <div style="font-size: 24px; font-weight: 700; color: var(--success);">${data.online_events}</div>
+            <div class="muted" style="font-size: 12px;">Online</div>
+          </div>
+          <div>
+            <div style="font-size: 24px; font-weight: 700; color: var(--danger);">${data.offline_events}</div>
+            <div class="muted" style="font-size: 12px;">Offline</div>
+          </div>
+        </div>
+      `;
+    })
+    .catch(err => {
+      console.error('Erreur chargement uptime:', err);
+      document.getElementById('uptimeStats').innerHTML =
+        '<div style="color: var(--danger);">Erreur de chargement des statistiques</div>';
+    });
+  </script>
 </body>
 </html>
