@@ -219,18 +219,24 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
             ip = d.get("ip", "")
             local_device = local_devices_by_ip.get(ip, {})
 
-            # Fusionner SNMP : backend + préserver community locale si absente du backend
+            # Fusionner SNMP : backend + préserver community locale si absente/invalide du backend
             snmp_backend = d.get("snmp", {})
             snmp_local = local_device.get("snmp", {})
             snmp_merged = dict(snmp_backend)
-            if not snmp_merged.get("community") and snmp_local.get("community"):
+
+            # Préserver community locale si backend envoie None, "none", ou chaîne vide
+            backend_community = snmp_merged.get("community")
+            if (not backend_community or backend_community == "none") and snmp_local.get("community"):
                 snmp_merged["community"] = snmp_local["community"]
 
-            # Fusionner PJLink : backend + préserver password local si absent du backend
+            # Fusionner PJLink : backend + préserver password local si absent/invalide du backend
             pjlink_backend = d.get("pjlink", {})
             pjlink_local = local_device.get("pjlink", {})
             pjlink_merged = dict(pjlink_backend)
-            if not pjlink_merged.get("password") and pjlink_local.get("password"):
+
+            # Préserver password local si backend envoie None, "none", ou chaîne vide
+            backend_password = pjlink_merged.get("password")
+            if (not backend_password or backend_password == "none") and pjlink_local.get("password"):
                 pjlink_merged["password"] = pjlink_local["password"]
 
             device = {

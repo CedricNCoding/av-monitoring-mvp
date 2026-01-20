@@ -237,6 +237,9 @@ def record_event_and_alerts(
 
     except Exception as e:
         db.rollback()
+        print(f"❌ Error in record_event_and_alerts for device {device.id}: {e}")
+        import traceback
+        traceback.print_exc()
         # Log l'erreur mais ne pas faire échouer l'ingest
         print(f"Error recording event/alert for device {device.ip}: {e}")
 
@@ -817,29 +820,24 @@ def update_device_from_backend(
 
     driver = (driver or "ping").strip().lower()
 
-    # Driver configs
-    snmp_block = {}
+    # Préserver la config existante et la mettre à jour
+    driver_config = _as_dict(device.driver_config or {})
+
+    # Driver configs - toujours mettre à jour avec les valeurs du formulaire
     if driver == "snmp":
-        snmp_block = {
+        driver_config["snmp"] = {
             "community": (snmp_community or "public").strip(),
             "port": max(1, snmp_port),
             "timeout_s": max(1, snmp_timeout_s),
             "retries": max(0, snmp_retries),
         }
 
-    pj_block = {}
     if driver == "pjlink":
-        pj_block = {
+        driver_config["pjlink"] = {
             "password": (pjlink_password or "").strip(),
             "port": max(1, pjlink_port),
             "timeout_s": max(1, pjlink_timeout_s),
         }
-
-    driver_config = {}
-    if snmp_block:
-        driver_config["snmp"] = snmp_block
-    if pj_block:
-        driver_config["pjlink"] = pj_block
 
     # Mettre à jour l'équipement
     device.ip = ip

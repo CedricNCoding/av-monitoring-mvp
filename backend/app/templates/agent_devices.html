@@ -538,7 +538,7 @@
                   <td class="muted mono">{{ d.last_seen or "—" }}</td>
 
                   <td style="text-align:right;">
-                    <button onclick="openEditModal({{ d.id }}, '{{ d.ip }}', '{{ d.name }}', '{{ d.building }}', '{{ d.floor }}', '{{ d.room }}', '{{ d.device_type }}', '{{ d.driver }}')" style="padding: 4px 10px; font-size: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 4px;">✏️ Modif.</button>
+                    <button onclick='openEditModal({{ d.id }}, "{{ d.ip }}", "{{ d.name }}", "{{ d.building }}", "{{ d.floor }}", "{{ d.room }}", "{{ d.device_type }}", "{{ d.driver }}", {{ d.driver_config|tojson|safe }})' style="padding: 4px 10px; font-size: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 4px;">✏️ Modif.</button>
                     <form method="post" action="/ui/devices/{{ d.id }}/delete" style="display:inline;" onsubmit="return confirm('Supprimer cet équipement ?');">
                       <button type="submit" class="btn-danger" style="padding: 4px 10px; font-size: 12px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">🗑️ Suppr.</button>
                     </form>
@@ -652,7 +652,7 @@
     // ===================================================================
     // Modal de modification
     // ===================================================================
-    function openEditModal(id, ip, name, building, floor, room, type, driver) {
+    function openEditModal(id, ip, name, building, floor, room, type, driver, driverConfig) {
       document.getElementById('editModal').style.display = 'block';
       document.getElementById('editForm').action = '/ui/devices/' + id + '/update';
       document.getElementById('edit-ip').value = ip || '';
@@ -662,6 +662,20 @@
       document.getElementById('edit-room').value = room || '';
       document.getElementById('edit-type').value = type || 'unknown';
       document.getElementById('edit-driver').value = driver || 'ping';
+
+      // Charger la config SNMP si elle existe
+      driverConfig = driverConfig || {};
+      const snmpConfig = driverConfig.snmp || {};
+      const pjlinkConfig = driverConfig.pjlink || {};
+
+      document.querySelector('#edit-snmp-config input[name="snmp_community"]').value = snmpConfig.community || 'public';
+      document.querySelector('#edit-snmp-config input[name="snmp_port"]').value = snmpConfig.port || 161;
+      document.querySelector('#edit-snmp-config input[name="snmp_timeout_s"]').value = snmpConfig.timeout_s || 1;
+      document.querySelector('#edit-snmp-config input[name="snmp_retries"]').value = snmpConfig.retries || 1;
+
+      document.querySelector('#edit-pjlink-config input[name="pjlink_password"]').value = pjlinkConfig.password || '';
+      document.querySelector('#edit-pjlink-config input[name="pjlink_port"]').value = pjlinkConfig.port || 4352;
+      document.querySelector('#edit-pjlink-config input[name="pjlink_timeout_s"]').value = pjlinkConfig.timeout_s || 2;
 
       // Afficher/masquer les configs driver
       const driverValue = driver || 'ping';

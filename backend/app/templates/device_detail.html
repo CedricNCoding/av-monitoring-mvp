@@ -231,66 +231,129 @@
     <div class="card" style="margin-top: 18px;">
       <h2>🔍 Détails driver / métriques</h2>
 
-      {% set snmp_ok = (metrics.snmp_ok if metrics and metrics.snmp_ok is not none else none) %}
-      {% set sys_descr = (metrics.sys_descr if metrics and metrics.sys_descr else "") %}
-      {% set sys_uptime = (metrics.sys_uptime if metrics and metrics.sys_uptime is not none else none) %}
+      {% if device.driver == "snmp" %}
+        {# Métriques SNMP #}
+        {% set snmp_ok = (metrics.snmp_ok if metrics and metrics.snmp_ok is not none else none) %}
+        {% set sys_descr = (metrics.sys_descr if metrics and metrics.sys_descr else "") %}
+        {% set sys_uptime = (metrics.sys_uptime if metrics and metrics.sys_uptime is not none else none) %}
 
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 22px;">
-        <table>
-          <tr>
-            <th>sysDescr</th>
-            <td class="muted" style="line-height: 1.4;">
-              {{ sys_descr or "—" }}
-            </td>
-          </tr>
-
-          <tr>
-            <th>SNMP OK</th>
-            <td class="soft">
-              {% if snmp_ok is none %}
-                <span class="muted">—</span>
-              {% else %}
-                {{ "✅ Oui" if snmp_ok else "❌ Non" }}
-              {% endif %}
-            </td>
-          </tr>
-
-          <tr>
-            <th>Driver metrics</th>
-            <td class="muted">
-              {# Exemples robustes, sans dépendre d'un driver spécifique #}
-              {% if metrics and metrics.get %}
-                {% if metrics.get("pjlink_ok") is not none %}
-                  PJLINK: <strong>{{ "OK" if metrics.get("pjlink_ok") else "KO" }}</strong>
-                {% elif metrics.get("ping_ms") is not none %}
-                  Ping: <strong>{{ metrics.get("ping_ms") }} ms</strong>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+          <table>
+            <tr>
+              <th>sysDescr</th>
+              <td class="muted" style="line-height: 1.4;">{{ sys_descr or "—" }}</td>
+            </tr>
+            <tr>
+              <th>SNMP OK</th>
+              <td class="soft">
+                {% if snmp_ok is none %}
+                  <span class="muted">—</span>
+                {% else %}
+                  {{ "✅ Oui" if snmp_ok else "❌ Non" }}
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+          <table>
+            <tr><th>sysUpTime</th><td class="muted mono">{{ sys_uptime if sys_uptime is not none else "—" }}</td></tr>
+            <tr><th>SNMP port</th><td><code>{{ (metrics.snmp_port if metrics and metrics.snmp_port else "161") }}</code></td></tr>
+            <tr>
+              <th>Erreur</th>
+              <td class="muted">
+                {% if metrics and metrics.get and metrics.get("snmp_error") %}
+                  <span class="mono error-text">{{ metrics.get("snmp_error") }}</span>
                 {% else %}
                   —
                 {% endif %}
-              {% else %}
-                —
-              {% endif %}
-            </td>
-          </tr>
-        </table>
+              </td>
+            </tr>
+          </table>
+        </div>
 
-        <table>
-          <tr><th>sysUpTime brut</th><td class="muted mono">{{ sys_uptime if sys_uptime is not none else "—" }}</td></tr>
-          <tr><th>SNMP port</th><td><code>{{ (metrics.snmp_port if metrics and metrics.snmp_port else "161") }}</code></td></tr>
-          <tr>
-            <th>Dernière erreur driver</th>
-            <td class="muted">
-              {% if metrics and metrics.get and metrics.get("snmp_error") %}
-                <span class="mono error-text">{{ metrics.get("snmp_error") }}</span>
-              {% elif metrics and metrics.get and metrics.get("pjlink_error") %}
-                <span class="mono error-text">{{ metrics.get("pjlink_error") }}</span>
-              {% else %}
-                —
-              {% endif %}
-            </td>
-          </tr>
-        </table>
-      </div>
+      {% elif device.driver == "pjlink" %}
+        {# Métriques PJLink #}
+        {% set pjlink_ok = (metrics.pjlink_ok if metrics and metrics.pjlink_ok is not none else none) %}
+        {% set power_status = (metrics.power_status if metrics and metrics.power_status else "") %}
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+          <table>
+            <tr>
+              <th>PJLink OK</th>
+              <td class="soft">
+                {% if pjlink_ok is none %}
+                  <span class="muted">—</span>
+                {% else %}
+                  {{ "✅ Oui" if pjlink_ok else "❌ Non" }}
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Power Status</th>
+              <td class="soft">{{ power_status or "—" }}</td>
+            </tr>
+          </table>
+          <table>
+            <tr><th>PJLink port</th><td><code>{{ (metrics.pjlink_port if metrics and metrics.pjlink_port else "4352") }}</code></td></tr>
+            <tr>
+              <th>Erreur</th>
+              <td class="muted">
+                {% if metrics and metrics.get and metrics.get("pjlink_error") %}
+                  <span class="mono error-text">{{ metrics.get("pjlink_error") }}</span>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+        </div>
+
+      {% elif device.driver == "ping" %}
+        {# Métriques Ping #}
+        {% set ping_ok = (metrics.ping_ok if metrics and metrics.ping_ok is not none else none) %}
+        {% set ping_ms = (metrics.ping_ms if metrics and metrics.ping_ms is not none else none) %}
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+          <table>
+            <tr>
+              <th>Ping réponse</th>
+              <td class="soft">
+                {% if ping_ok is none %}
+                  <span class="muted">—</span>
+                {% else %}
+                  {{ "✅ Oui" if ping_ok else "❌ Non" }}
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Latence</th>
+              <td class="soft">
+                {% if ping_ms is not none %}
+                  <strong>{{ ping_ms }} ms</strong>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+          <table>
+            <tr>
+              <th>Erreur</th>
+              <td class="muted">
+                {% if metrics and metrics.get and metrics.get("ping_error") %}
+                  <span class="mono error-text">{{ metrics.get("ping_error") }}</span>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+        </div>
+
+      {% else %}
+        <div class="muted" style="text-align: center; padding: 40px;">
+          Driver inconnu: <code>{{ device.driver }}</code>
+        </div>
+      {% endif %}
     </div>
 
     <!-- Historique et Disponibilité -->
