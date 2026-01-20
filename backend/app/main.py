@@ -1403,6 +1403,7 @@ def ui_agent_devices(request: Request, site_id: int, saved: int = 0, db: Session
             "ip": d.ip,
             "device_type": d.device_type,
             "driver": d.driver,
+            "driver_config": _as_dict(d.driver_config or {}),
             "building": building,
             "room": room,
             "status": d.status,
