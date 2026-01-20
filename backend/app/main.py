@@ -949,6 +949,127 @@ def device_detail(device_id: int, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------
+# API : Device History & Uptime
+# ------------------------------------------------------------
+@app.get("/api/devices/{device_id}/history")
+def api_device_history(device_id: int, days: int = 30, db: Session = Depends(get_db)):
+    """Retourne l'historique d'états d'un équipement sur N jours."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    cutoff = _now_utc() - timedelta(days=days)
+    events = (
+        db.query(DeviceEvent)
+        .filter(DeviceEvent.device_id == device_id)
+        .filter(DeviceEvent.created_at >= cutoff)
+        .order_by(DeviceEvent.created_at.asc())
+        .all()
+    )
+
+    return {
+        "device_id": device_id,
+        "device_name": device.name,
+        "device_ip": device.ip,
+        "period_days": days,
+        "events": [
+            {
+                "timestamp": e.created_at.isoformat(),
+                "status": e.status,
+                "verdict": e.verdict,
+                "detail": e.detail,
+            }
+            for e in events
+        ],
+    }
+
+
+@app.get("/api/devices/{device_id}/uptime")
+def api_device_uptime(device_id: int, days: int = 30, db: Session = Depends(get_db)):
+    """Calcule le pourcentage de disponibilité d'un équipement sur N jours."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    cutoff = _now_utc() - timedelta(days=days)
+    events = (
+        db.query(DeviceEvent)
+        .filter(DeviceEvent.device_id == device_id)
+        .filter(DeviceEvent.created_at >= cutoff)
+        .order_by(DeviceEvent.created_at.asc())
+        .all()
+    )
+
+    if not events:
+        return {
+            "device_id": device_id,
+            "period_days": days,
+            "uptime_percent": None,
+            "total_events": 0,
+            "online_events": 0,
+            "offline_events": 0,
+        }
+
+    online_count = sum(1 for e in events if e.status == "online")
+    offline_count = sum(1 for e in events if e.status == "offline")
+    total = len(events)
+
+    uptime_percent = round((online_count / total) * 100, 2) if total > 0 else 0
+
+    return {
+        "device_id": device_id,
+        "device_name": device.name,
+        "device_ip": device.ip,
+        "period_days": days,
+        "uptime_percent": uptime_percent,
+        "total_events": total,
+        "online_events": online_count,
+        "offline_events": offline_count,
+    }
+
+
+@app.get("/api/sites/map-data")
+def api_sites_map_data(db: Session = Depends(get_db)):
+    """Retourne les données pour afficher une carte des sites."""
+    sites = db.query(Site).all()
+
+    map_data = []
+    for site in sites:
+        if not site.latitude or not site.longitude:
+            continue  # Skip sites sans coordonnées
+
+        # Compter les devices et leur statut
+        devices = db.query(Device).filter(Device.site_id == site.id).all()
+        total = len(devices)
+        online = sum(1 for d in devices if d.status == "online")
+        offline = sum(1 for d in devices if d.status == "offline")
+        unknown = total - online - offline
+
+        # Déterminer la couleur de la pin
+        if offline > 0:
+            color = "red"
+        elif unknown > 0:
+            color = "orange"
+        else:
+            color = "green"
+
+        map_data.append({
+            "site_id": site.id,
+            "site_name": site.name,
+            "address": site.address,
+            "latitude": float(site.latitude),
+            "longitude": float(site.longitude),
+            "color": color,
+            "devices_total": total,
+            "devices_online": online,
+            "devices_offline": offline,
+            "devices_unknown": unknown,
+        })
+
+    return {"sites": map_data}
+
+
+# ------------------------------------------------------------
 # UI : Dashboard (ajouté)
 # ------------------------------------------------------------
 @app.get("/ui/dashboard", response_class=HTMLResponse)
@@ -1195,6 +1316,31 @@ def ui_update_site_reporting(
     new_hash = _compute_config_hash(site, devices)
     site.config_version = new_hash
     site.config_updated_at = _now_utc()
+    db.commit()
+
+    return RedirectResponse(f"/ui/agents/{site_id}/devices?saved=1", status_code=303)
+
+
+# ------------------------------------------------------------
+# UI : Update Site Location
+# ------------------------------------------------------------
+@app.post("/ui/agents/{site_id}/location")
+def ui_update_site_location(
+    site_id: int,
+    address: str = Form(""),
+    latitude: str = Form(""),
+    longitude: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    """Met à jour la localisation géographique d'un site."""
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    site.address = (address or "").strip() or None
+    site.latitude = (latitude or "").strip() or None
+    site.longitude = (longitude or "").strip() or None
+
     db.commit()
 
     return RedirectResponse(f"/ui/agents/{site_id}/devices?saved=1", status_code=303)

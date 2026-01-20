@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Correction : Support des deux formats (`backend_url` et `api_url`) pour backward compatibility
   - Fichiers modifiés : [src/collector.py:237](src/collector.py#L237), [src/config_sync.py:119](src/config_sync.py#L119)
   - Voir [HOTFIX-1.1.1.md](HOTFIX-1.1.1.md) pour les détails du déploiement
+- 🐛 **SNMP** : `No module named 'asyncore'` sur Python 3.12+
+  - Remplacé `pysnmp` par `pysnmp-lextudio` (fork maintenu)
+- 🐛 **Ping** : `Operation not permitted` malgré cap_net_raw
+  - Ajouté `AmbientCapabilities=CAP_NET_RAW` dans systemd
+- 🐛 **Interface** : URL affichait vide au lieu de backend_url
+- 🐛 **Config Sync** : URL locale écrasée par URL Docker interne
 
 ### Changed
 - 🔧 **Config par défaut plus claire** : Utilise `"CHANGE_ME"` au lieu d'URLs invalides

@@ -212,17 +212,37 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
         }
 
         # Mapper les devices du backend vers le format agent
+        # Créer un index des devices locaux par IP pour préserver snmp.community et pjlink.password
+        local_devices_by_ip = {dev.get("ip"): dev for dev in cfg.get("devices", []) if dev.get("ip")}
+
         for d in backend_config.get("devices", []):
+            ip = d.get("ip", "")
+            local_device = local_devices_by_ip.get(ip, {})
+
+            # Fusionner SNMP : backend + préserver community locale si absente du backend
+            snmp_backend = d.get("snmp", {})
+            snmp_local = local_device.get("snmp", {})
+            snmp_merged = dict(snmp_backend)
+            if not snmp_merged.get("community") and snmp_local.get("community"):
+                snmp_merged["community"] = snmp_local["community"]
+
+            # Fusionner PJLink : backend + préserver password local si absent du backend
+            pjlink_backend = d.get("pjlink", {})
+            pjlink_local = local_device.get("pjlink", {})
+            pjlink_merged = dict(pjlink_backend)
+            if not pjlink_merged.get("password") and pjlink_local.get("password"):
+                pjlink_merged["password"] = pjlink_local["password"]
+
             device = {
-                "ip": d.get("ip", ""),
+                "ip": ip,
                 "name": d.get("name", ""),
                 "building": d.get("building", ""),
                 "floor": d.get("floor", ""),
                 "room": d.get("room", ""),
                 "type": d.get("type", "unknown"),
                 "driver": d.get("driver", "ping"),
-                "snmp": d.get("snmp", {}),
-                "pjlink": d.get("pjlink", {}),
+                "snmp": snmp_merged,
+                "pjlink": pjlink_merged,
                 "expectations": d.get("expectations", {}),
             }
             new_config["devices"].append(device)

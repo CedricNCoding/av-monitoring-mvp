@@ -36,6 +36,11 @@ class Site(Base):
     contact_email = Column(String, nullable=True)
     contact_phone = Column(String, nullable=True)
 
+    # Localisation géographique (pour carte dashboard)
+    address = Column(String, nullable=True)
+    latitude = Column(String, nullable=True)  # Format: "48.8566"
+    longitude = Column(String, nullable=True)  # Format: "2.3522"
+
 
 class Device(Base):
     __tablename__ = "devices"
