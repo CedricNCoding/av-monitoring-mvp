@@ -162,6 +162,7 @@ def record_event_and_alerts(
         should_write_event = False
         if last_event is None:
             should_write_event = True
+            print(f"🆕 Device {device.id} ({device.ip}): First event, will record")
         else:
             # Vérifier si les valeurs ont changé
             status_changed = last_event.status != device.status
@@ -174,6 +175,18 @@ def record_event_and_alerts(
             time_exceeded = time_diff > time_threshold
 
             should_write_event = status_changed or verdict_changed or detail_changed or time_exceeded
+
+            if should_write_event:
+                reasons = []
+                if status_changed:
+                    reasons.append(f"status: {last_event.status} → {device.status}")
+                if verdict_changed:
+                    reasons.append(f"verdict: {last_event.verdict} → {device.verdict}")
+                if detail_changed:
+                    reasons.append(f"detail changed")
+                if time_exceeded:
+                    reasons.append(f"60min threshold exceeded ({int(time_diff/60)}min)")
+                print(f"🔄 Device {device.id} ({device.ip}): Change detected - {', '.join(reasons)}")
 
         # Écrire l'event si nécessaire
         if should_write_event:
@@ -193,6 +206,9 @@ def record_event_and_alerts(
                 created_at=now,
             )
             db.add(event)
+            print(f"✅ Event recorded for device {device.id} ({device.ip}): status={device.status}, verdict={device.verdict}")
+        else:
+            print(f"⏭️  Skipped event for device {device.id} ({device.ip}): no change since last event")
 
         # Gestion des alertes
         # Récupérer l'alerte active (non fermée) pour ce device
@@ -635,6 +651,24 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
         driver_cfg = _as_dict(d.driver_config or {})
         expectations = _as_dict(d.expectations or {})
 
+        # S'assurer que snmp et pjlink sont toujours des dicts et jamais None
+        snmp_config = driver_cfg.get("snmp") or {}
+        pjlink_config = driver_cfg.get("pjlink") or {}
+
+        # Nettoyer les valeurs None dans snmp_config
+        if isinstance(snmp_config, dict):
+            # Si community est None ou vide, mettre "public" par défaut
+            if not snmp_config.get("community"):
+                snmp_config = dict(snmp_config)  # Copie pour ne pas modifier l'original
+                snmp_config["community"] = "public"
+
+        # Nettoyer les valeurs None dans pjlink_config
+        if isinstance(pjlink_config, dict):
+            # Si password est None, mettre chaîne vide
+            if pjlink_config.get("password") is None:
+                pjlink_config = dict(pjlink_config)  # Copie
+                pjlink_config["password"] = ""
+
         device_data = {
             "ip": d.ip,
             "name": d.name,
@@ -643,8 +677,8 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
             "room": d.room or "",
             "type": d.device_type,
             "driver": d.driver,
-            "snmp": driver_cfg.get("snmp", {}),
-            "pjlink": driver_cfg.get("pjlink", {}),
+            "snmp": snmp_config,
+            "pjlink": pjlink_config,
             "expectations": expectations,
         }
         devices_config.append(device_data)
@@ -707,11 +741,12 @@ def create_device(
 
     driver = (driver or "ping").strip().lower()
 
-    # Driver configs
+    # Driver configs - S'assurer que les valeurs ne sont JAMAIS None ou vides
     snmp_block = {}
     if driver == "snmp":
+        community = (snmp_community or "").strip() or "public"  # Garantir non-vide
         snmp_block = {
-            "community": (snmp_community or "public").strip(),
+            "community": community,
             "port": max(1, snmp_port),
             "timeout_s": max(1, snmp_timeout_s),
             "retries": max(0, snmp_retries),
@@ -719,8 +754,9 @@ def create_device(
 
     pj_block = {}
     if driver == "pjlink":
+        password = (pjlink_password or "").strip()  # Peut être vide (pas de password)
         pj_block = {
-            "password": (pjlink_password or "").strip(),
+            "password": password,
             "port": max(1, pjlink_port),
             "timeout_s": max(1, pjlink_timeout_s),
         }
@@ -823,16 +859,30 @@ def update_device_from_backend(
 
     # Driver configs - toujours mettre à jour avec les valeurs du formulaire
     if driver == "snmp":
+        # S'assurer que community n'est JAMAIS None ou vide
+        community = (snmp_community or "").strip()
+        if not community:
+            # Si vide, essayer de préserver la valeur existante
+            existing_snmp = driver_config.get("snmp", {})
+            community = existing_snmp.get("community") or "public"
+
         driver_config["snmp"] = {
-            "community": (snmp_community or "public").strip(),
+            "community": community,
             "port": max(1, snmp_port),
             "timeout_s": max(1, snmp_timeout_s),
             "retries": max(0, snmp_retries),
         }
 
     if driver == "pjlink":
+        # S'assurer que password n'est JAMAIS None (mais peut être vide si pas de password)
+        password = (pjlink_password or "").strip()
+        if not password:
+            # Si vide, essayer de préserver la valeur existante
+            existing_pjlink = driver_config.get("pjlink", {})
+            password = existing_pjlink.get("password") or ""
+
         driver_config["pjlink"] = {
-            "password": (pjlink_password or "").strip(),
+            "password": password,
             "port": max(1, pjlink_port),
             "timeout_s": max(1, pjlink_timeout_s),
         }

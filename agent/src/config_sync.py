@@ -220,24 +220,48 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
             local_device = local_devices_by_ip.get(ip, {})
 
             # Fusionner SNMP : backend + préserver community locale si absente/invalide du backend
-            snmp_backend = d.get("snmp", {})
-            snmp_local = local_device.get("snmp", {})
-            snmp_merged = dict(snmp_backend)
+            snmp_backend = d.get("snmp") or {}
+            snmp_local = local_device.get("snmp") or {}
+            snmp_merged = dict(snmp_backend) if isinstance(snmp_backend, dict) else {}
 
-            # Préserver community locale si backend envoie None, "none", ou chaîne vide
+            # Stratégie de fusion pour community:
+            # 1. Si backend a une valeur valide (non None, non vide, non "none") -> utiliser backend
+            # 2. Sinon, si local a une valeur valide -> utiliser local
+            # 3. Sinon, utiliser "public" par défaut
             backend_community = snmp_merged.get("community")
-            if (not backend_community or backend_community == "none") and snmp_local.get("community"):
-                snmp_merged["community"] = snmp_local["community"]
+            local_community = snmp_local.get("community") if isinstance(snmp_local, dict) else None
+
+            if backend_community and backend_community != "none" and backend_community.strip():
+                # Backend a une valeur valide
+                snmp_merged["community"] = backend_community.strip()
+                print(f"  📡 {ip}: Using backend SNMP community: {snmp_merged['community']}")
+            elif local_community and local_community != "none" and local_community.strip():
+                # Local a une valeur valide
+                snmp_merged["community"] = local_community.strip()
+                print(f"  💾 {ip}: Preserving local SNMP community: {snmp_merged['community']}")
+            else:
+                # Aucune valeur valide, fallback sur "public"
+                snmp_merged["community"] = "public"
+                print(f"  ⚠️  {ip}: No valid SNMP community, using default: public")
 
             # Fusionner PJLink : backend + préserver password local si absent/invalide du backend
-            pjlink_backend = d.get("pjlink", {})
-            pjlink_local = local_device.get("pjlink", {})
-            pjlink_merged = dict(pjlink_backend)
+            pjlink_backend = d.get("pjlink") or {}
+            pjlink_local = local_device.get("pjlink") or {}
+            pjlink_merged = dict(pjlink_backend) if isinstance(pjlink_backend, dict) else {}
 
-            # Préserver password local si backend envoie None, "none", ou chaîne vide
+            # Stratégie de fusion pour password (peut être vide volontairement)
             backend_password = pjlink_merged.get("password")
-            if (not backend_password or backend_password == "none") and pjlink_local.get("password"):
-                pjlink_merged["password"] = pjlink_local["password"]
+            local_password = pjlink_local.get("password") if isinstance(pjlink_local, dict) else None
+
+            if backend_password is not None and backend_password != "none":
+                # Backend a défini un password (peut être vide)
+                pjlink_merged["password"] = backend_password
+            elif local_password is not None and local_password != "none":
+                # Local a un password
+                pjlink_merged["password"] = local_password
+            else:
+                # Pas de password
+                pjlink_merged["password"] = ""
 
             device = {
                 "ip": ip,
