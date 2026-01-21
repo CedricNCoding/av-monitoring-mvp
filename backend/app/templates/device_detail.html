@@ -368,6 +368,19 @@
         <div id="uptimeStats" style="text-align: center; padding: 20px;">
           <div class="muted">Chargement...</div>
         </div>
+
+        <!-- Bouton Purger l'historique -->
+        <div style="text-align: center; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <button
+            id="btnPurgeHistory"
+            style="padding: 10px 24px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;"
+            onclick="purgeHistory()">
+            🗑️ Purger l'historique
+          </button>
+          <div class="muted" style="font-size: 12px; margin-top: 8px;">
+            Supprime tous les événements historiques de cet équipement
+          </div>
+        </div>
       </div>
     </div>
 
@@ -524,6 +537,35 @@
       document.getElementById('uptimeStats').innerHTML =
         '<div style="color: var(--danger);">Erreur de chargement des statistiques</div>';
     });
+
+  // Fonction pour purger l'historique
+  function purgeHistory() {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir supprimer TOUT l\'historique de cet équipement ?\n\nCette action est irréversible.')) {
+      return;
+    }
+
+    const btn = document.getElementById('btnPurgeHistory');
+    btn.disabled = true;
+    btn.textContent = '⏳ Suppression en cours...';
+    btn.style.opacity = '0.6';
+
+    fetch(`/api/devices/${deviceId}/history`, {
+      method: 'DELETE'
+    })
+      .then(res => res.json())
+      .then(data => {
+        alert(`✅ ${data.deleted_events} événements supprimés avec succès`);
+        // Recharger la page pour afficher les graphiques vides
+        window.location.reload();
+      })
+      .catch(err => {
+        console.error('Erreur purge historique:', err);
+        alert('❌ Erreur lors de la suppression de l\'historique');
+        btn.disabled = false;
+        btn.textContent = '🗑️ Purger l\'historique';
+        btn.style.opacity = '1';
+      });
+  }
   </script>
 </body>
 </html>

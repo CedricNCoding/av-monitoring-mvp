@@ -158,25 +158,17 @@ def record_event_and_alerts(
             .first()
         )
 
-        # Déterminer si on doit écrire un nouvel event
-        should_write_event = False
+        # Enregistrer CHAQUE collecte (plus de seuil de temps)
+        should_write_event = True
         if last_event is None:
-            should_write_event = True
             print(f"🆕 Device {device.id} ({device.ip}): First event, will record")
         else:
-            # Vérifier si les valeurs ont changé
+            # Log pour information seulement
             status_changed = last_event.status != device.status
             verdict_changed = last_event.verdict != device.verdict
             detail_changed = last_event.detail != device.detail
 
-            # Vérifier si le dernier event date de plus de 60 minutes
-            time_threshold = 60 * 60  # 60 minutes en secondes
-            time_diff = (now - last_event.created_at).total_seconds()
-            time_exceeded = time_diff > time_threshold
-
-            should_write_event = status_changed or verdict_changed or detail_changed or time_exceeded
-
-            if should_write_event:
+            if status_changed or verdict_changed or detail_changed:
                 reasons = []
                 if status_changed:
                     reasons.append(f"status: {last_event.status} → {device.status}")
@@ -184,31 +176,29 @@ def record_event_and_alerts(
                     reasons.append(f"verdict: {last_event.verdict} → {device.verdict}")
                 if detail_changed:
                     reasons.append(f"detail changed")
-                if time_exceeded:
-                    reasons.append(f"60min threshold exceeded ({int(time_diff/60)}min)")
                 print(f"🔄 Device {device.id} ({device.ip}): Change detected - {', '.join(reasons)}")
+            else:
+                time_diff = (now - last_event.created_at).total_seconds()
+                print(f"📊 Device {device.id} ({device.ip}): Recording periodic event ({int(time_diff/60)}min since last)")
 
-        # Écrire l'event si nécessaire
-        if should_write_event:
-            event = DeviceEvent(
-                device_id=device.id,
-                site_id=site.id,
-                ip=device.ip,
-                name=device.name,
-                building=device.building,
-                room=device.room,
-                device_type=device.device_type,
-                driver=device.driver,
-                status=device.status,
-                verdict=device.verdict,
-                detail=device.detail,
-                metrics_json=_as_dict(device.metrics),
-                created_at=now,
-            )
-            db.add(event)
-            print(f"✅ Event recorded for device {device.id} ({device.ip}): status={device.status}, verdict={device.verdict}")
-        else:
-            print(f"⏭️  Skipped event for device {device.id} ({device.ip}): no change since last event")
+        # Écrire l'event à chaque collecte
+        event = DeviceEvent(
+            device_id=device.id,
+            site_id=site.id,
+            ip=device.ip,
+            name=device.name,
+            building=device.building,
+            room=device.room,
+            device_type=device.device_type,
+            driver=device.driver,
+            status=device.status,
+            verdict=device.verdict,
+            detail=device.detail,
+            metrics_json=_as_dict(device.metrics),
+            created_at=now,
+        )
+        db.add(event)
+        print(f"✅ Event recorded for device {device.id} ({device.ip}): status={device.status}, verdict={device.verdict}")
 
         # Gestion des alertes
         # Récupérer l'alerte active (non fermée) pour ce device
@@ -1071,6 +1061,31 @@ def api_device_uptime(device_id: int, days: int = 30, db: Session = Depends(get_
         "total_events": total,
         "online_events": online_count,
         "offline_events": offline_count,
+    }
+
+
+@app.delete("/api/devices/{device_id}/history")
+def api_device_purge_history(device_id: int, db: Session = Depends(get_db)):
+    """Purge l'historique complet d'un équipement."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    # Compter les events avant suppression
+    count = db.query(DeviceEvent).filter(DeviceEvent.device_id == device_id).count()
+
+    # Supprimer tous les events de cet équipement
+    db.query(DeviceEvent).filter(DeviceEvent.device_id == device_id).delete()
+    db.commit()
+
+    print(f"🗑️  Purged {count} events for device {device_id} ({device.ip})")
+
+    return {
+        "device_id": device_id,
+        "device_name": device.name,
+        "device_ip": device.ip,
+        "deleted_events": count,
+        "message": f"{count} événements supprimés"
     }
 
 
