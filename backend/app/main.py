@@ -495,14 +495,9 @@ def ingest(
 
         incoming_metrics = _as_dict(d.get("metrics") or {})
 
-        # Extraire driver_config (snmp, pjlink) depuis le payload agent
-        incoming_snmp = _as_dict(d.get("snmp") or {})
-        incoming_pjlink = _as_dict(d.get("pjlink") or {})
-        incoming_driver_config = {}
-        if incoming_snmp:
-            incoming_driver_config["snmp"] = incoming_snmp
-        if incoming_pjlink:
-            incoming_driver_config["pjlink"] = incoming_pjlink
+        # NOTE: driver_config (snmp.community, pjlink.password) ne doit PAS être écrasé par l'ingestion
+        # car l'agent n'envoie PAS ces données sensibles dans le payload.
+        # On ne gère driver_config que lors de la création/modification manuelle via UI.
 
         # Extraire expectations depuis le payload agent
         incoming_expectations = _as_dict(d.get("expectations") or {})
@@ -515,18 +510,19 @@ def ingest(
         )
 
         if dev is None:
+            # Création: initialiser driver_config à vide, sera rempli manuellement via UI
             dev = Device(
                 site_id=site.id,
                 ip=ip,
                 name=incoming_name,
                 device_type=incoming_type,
                 driver=incoming_driver,
-                driver_config=incoming_driver_config,
+                driver_config={},  # Vide par défaut, sera configuré via UI
                 expectations=incoming_expectations,
             )
             db.add(dev)
 
-        # Champs standard
+        # Champs standard - MAJ à chaque ingestion
         dev.name = incoming_name
         dev.device_type = incoming_type
         dev.driver = incoming_driver
@@ -537,8 +533,10 @@ def ingest(
         dev.floor = incoming_floor
         dev.room = incoming_room
 
-        # driver_config et expectations
-        dev.driver_config = incoming_driver_config
+        # NE PAS écraser driver_config - il est géré uniquement via UI
+        # dev.driver_config = ... (SKIP)
+
+        # Expectations - MAJ à chaque ingestion
         dev.expectations = incoming_expectations
 
         # metrics
