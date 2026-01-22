@@ -30,7 +30,7 @@ sudo apt install python3 python3-pip python3-venv
 ### 1. Télécharger le code
 ```bash
 # Cloner le dépôt ou télécharger l'archive
-git clone https://github.com/votre-org/av-monitoring-mvp.git
+git clone https://github.com/CedricNCoding/av-monitoring-mvp.git
 cd av-monitoring-mvp/agent
 ```
 
