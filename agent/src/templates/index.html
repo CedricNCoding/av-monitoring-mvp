@@ -414,6 +414,151 @@
     </div>
   </div>
 
+  <!-- SECTION ZIGBEE -->
+  <div class="card" style="margin-top: 2rem;">
+    <h2 style="margin-bottom: 1rem;">📡 Gestion Zigbee</h2>
+
+    <!-- Status connexion MQTT -->
+    <div style="margin-bottom: 1.5rem; padding: 10px; background: {% if zigbee_status.connected %}#e8f5e9{% else %}#ffebee{% endif %}; border-radius: 4px;">
+      <strong>Status MQTT :</strong>
+      <span class="badge {{ 'online' if zigbee_status.connected else 'offline' }}" style="margin-left: 8px;">
+        {{ "Connecté" if zigbee_status.connected else "Déconnecté" }}
+      </span>
+      {% if not zigbee_status.connected %}
+      <p class="muted" style="margin-top: 8px; margin-bottom: 0;">
+        Le broker MQTT n'est pas disponible. Vérifiez que Mosquitto et Zigbee2MQTT sont démarrés.
+      </p>
+      {% endif %}
+    </div>
+
+    <!-- Bouton pairing -->
+    {% if zigbee_status.connected %}
+    <form method="post" action="/zigbee/permit_join" style="margin-bottom: 1.5rem;">
+      <button type="submit" class="success" style="padding: 10px 20px;">
+        🔗 Activer jumelage (60 secondes)
+      </button>
+      <span class="muted" style="margin-left: 10px;">
+        Appuyez sur le bouton d'appairage de votre appareil Zigbee après avoir cliqué ici
+      </span>
+    </form>
+    {% else %}
+    <div style="margin-bottom: 1.5rem;">
+      <button disabled class="success" style="padding: 10px 20px; opacity: 0.5; cursor: not-allowed;">
+        🔗 Activer jumelage (60 secondes)
+      </button>
+      <span class="muted" style="margin-left: 10px;">MQTT déconnecté - impossible de jumeler</span>
+    </div>
+    {% endif %}
+
+    <!-- Liste devices Zigbee -->
+    <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Appareils Zigbee détectés</h3>
+
+    {% if zigbee_devices %}
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width: 150px;">Nom (friendly name)</th>
+            <th style="min-width: 120px;">Adresse IEEE</th>
+            <th>Type</th>
+            <th>Dernière activité</th>
+            <th>Batterie</th>
+            <th>Qualité signal</th>
+            <th style="min-width: 250px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for zdev in zigbee_devices %}
+          <tr>
+            <td><strong>{{ zdev.friendly_name }}</strong></td>
+            <td><code style="font-size: 11px;">{{ zdev.ieee_address[:16] }}...</code></td>
+            <td><span class="muted">{{ zdev.type }}</span></td>
+            <td class="muted">
+              {% if zdev.last_seen %}
+                {{ zdev.last_seen_relative or zdev.last_seen[:19] }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if zdev.battery is not none %}
+                {{ zdev.battery }}%
+                {% if zdev.battery < 20 %}
+                  <span style="color: #d32f2f; font-weight: bold;">⚠ Faible</span>
+                {% elif zdev.battery < 50 %}
+                  <span style="color: #f57c00;">⚡</span>
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if zdev.linkquality is not none %}
+                {{ zdev.linkquality }}
+                {% if zdev.linkquality < 50 %}
+                  <span style="color: #d32f2f;">📶</span>
+                {% elif zdev.linkquality < 100 %}
+                  <span style="color: #f57c00;">📶</span>
+                {% else %}
+                  <span style="color: #388e3c;">📶</span>
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button
+                  onclick="showZigbeeRenameModal('{{ zdev.friendly_name }}')"
+                  style="padding: 4px 8px; font-size: 11px;">
+                  ✏️ Renommer
+                </button>
+                <button
+                  onclick="showZigbeeRoomModal('{{ zdev.friendly_name }}')"
+                  style="padding: 4px 8px; font-size: 11px;">
+                  📍 Assigner salle
+                </button>
+                <form method="post" action="/zigbee/remove" style="display:inline; margin: 0;">
+                  <input type="hidden" name="ieee_address" value="{{ zdev.ieee_address }}">
+                  <button
+                    type="submit"
+                    class="danger"
+                    style="padding: 4px 8px; font-size: 11px;"
+                    onclick="return confirm('Supprimer {{ zdev.friendly_name }} du réseau Zigbee ?')">
+                    🗑️ Supprimer
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 20px; text-align: center; background: #f5f5f5; border-radius: 4px;">
+      <p class="muted" style="margin: 0;">
+        {% if zigbee_status.connected %}
+          Aucun appareil Zigbee détecté. Utilisez le bouton "Activer jumelage" ci-dessus pour ajouter un appareil.
+        {% else %}
+          MQTT non connecté. Impossible de lister les appareils Zigbee.
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if zigbee_devices %}
+    <div style="margin-top: 1rem; padding: 10px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+      <strong>💡 Astuce :</strong>
+      <ul style="margin: 8px 0 0 20px; padding: 0;">
+        <li>Renommez vos appareils avec des noms explicites (ex: "capteur_salle_101")</li>
+        <li>Associez-les à une salle pour les retrouver dans l'inventaire principal</li>
+        <li>Surveillez le niveau de batterie et la qualité du signal</li>
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
   <script>
     // Gestion du formulaire d'ajout
     const driverSelect = document.getElementById('driver-select');
@@ -673,6 +818,45 @@
       document.getElementById('filter-floor').value = '';
       document.getElementById('filter-room').value = '';
       applyFilters();
+    }
+
+    // Fonctions pour gestion Zigbee
+    function showZigbeeRenameModal(friendlyName) {
+      const newName = prompt("Nouveau nom pour '" + friendlyName + "' :", friendlyName);
+      if (newName && newName.trim() && newName !== friendlyName) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/zigbee/rename';
+        form.innerHTML = `
+          <input type="hidden" name="friendly_name" value="${friendlyName}">
+          <input type="hidden" name="new_name" value="${newName.trim()}">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+      }
+    }
+
+    function showZigbeeRoomModal(friendlyName) {
+      const building = prompt("Bâtiment :", "");
+      if (building === null) return;
+
+      const floor = prompt("Étage :", "");
+      if (floor === null) return;
+
+      const room = prompt("Salle :", "");
+      if (room === null) return;
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/zigbee/assign_room';
+      form.innerHTML = `
+        <input type="hidden" name="friendly_name" value="${friendlyName}">
+        <input type="hidden" name="building" value="${building.trim()}">
+        <input type="hidden" name="floor" value="${floor.trim()}">
+        <input type="hidden" name="room" value="${room.trim()}">
+      `;
+      document.body.appendChild(form);
+      form.submit();
     }
 
     // Initialisation au chargement de la page

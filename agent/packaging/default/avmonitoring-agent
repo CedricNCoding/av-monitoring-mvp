@@ -12,3 +12,12 @@ CONFIG_SYNC_INTERVAL_MIN=5
 
 # Log level (DEBUG, INFO, WARNING, ERROR)
 # LOG_LEVEL=INFO
+
+# Zigbee/MQTT Configuration (populated by install_zigbee_stack.sh)
+# Uncomment and configure these variables to enable Zigbee support
+# AVMVP_MQTT_HOST=localhost
+# AVMVP_MQTT_PORT=8883
+# AVMVP_MQTT_USER=avmonitoring
+# AVMVP_MQTT_PASS=<generated_password>
+# AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
+# AVMVP_MQTT_BASE_TOPIC=zigbee2mqtt

@@ -130,6 +130,40 @@ def index(request: Request):
     # Récupérer l'état de la synchronisation config
     sync_status = get_sync_status()
 
+    # Context Zigbee (état MQTT + liste devices)
+    zigbee_status = {"connected": False, "last_update": None}
+    zigbee_devices = []
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+        zigbee_status = {
+            "connected": mqtt.is_connected(),
+            "last_update": mqtt.get_last_message_time(),
+        }
+        # Récupérer liste complète depuis bridge/devices
+        all_devices = mqtt.get_all_devices()
+        # Enrichir avec infos du cache
+        for dev in all_devices:
+            fn = dev.get("friendly_name", "")
+            if not fn or fn == "Coordinator":
+                continue  # Skip coordinator
+            # Récupérer état depuis cache
+            state = mqtt.get_device_state(fn)
+            zigbee_devices.append({
+                "friendly_name": fn,
+                "ieee_address": dev.get("ieee_address", ""),
+                "type": dev.get("type", "unknown"),
+                "model_id": dev.get("model_id", ""),
+                "manufacturer": dev.get("manufacturer", ""),
+                "last_seen": state.get("last_seen") if state else None,
+                "last_seen_relative": None,  # TODO: calculer "il y a X min"
+                "battery": state.get("battery") if state else None,
+                "linkquality": state.get("linkquality") if state else None,
+            })
+    except Exception as e:
+        # MQTT non disponible ou erreur, ignorer silencieusement
+        print(f"Zigbee context error (non-blocking): {e}")
+
     # compat template: certains index.html utilisent "status" au lieu de "last_status"
     context = {
         "request": request,
@@ -139,6 +173,8 @@ def index(request: Request):
         "status": last_status,  # alias
         "last_results": last_results,  # résultats par IP
         "sync_status": sync_status,  # état de la sync config
+        "zigbee_status": zigbee_status,  # état MQTT Zigbee
+        "zigbee_devices": zigbee_devices,  # liste devices Zigbee
     }
 
     return templates.TemplateResponse("index.html", context)
@@ -438,6 +474,132 @@ def trigger_sync():
         sync_config_from_backend(cfg)
     except Exception as e:
         print(f"⚠️  Manual sync failed: {e}")
+
+    return RedirectResponse("/", status_code=303)
+
+
+# ---------------------------------------------------------------------
+# Endpoints Zigbee
+# ---------------------------------------------------------------------
+@app.post("/zigbee/permit_join")
+def zigbee_permit_join():
+    """Active le mode pairing Zigbee (60 secondes)."""
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+        mqtt.permit_join(60)
+    except Exception as e:
+        print(f"⚠️  Permit join failed: {e}")
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/zigbee/rename")
+def zigbee_rename(
+    friendly_name: str = Form(...),
+    new_name: str = Form(...)
+):
+    """Renomme un device Zigbee (via Z2M bridge)."""
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+
+        # Publier request rename vers Zigbee2MQTT
+        mqtt.rename_device(friendly_name, new_name)
+
+        # Mettre à jour config.json (changer ip)
+        cfg = load_config(CONFIG_PATH)
+        for dev in cfg.get("devices", []):
+            if dev.get("ip") == f"zigbee:{friendly_name}":
+                dev["ip"] = f"zigbee:{new_name}"
+                # Mettre à jour aussi le name si c'était le même
+                if dev.get("name") == friendly_name:
+                    dev["name"] = new_name
+                break
+        save_config(CONFIG_PATH, cfg)
+
+    except Exception as e:
+        print(f"⚠️  Rename failed: {e}")
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/zigbee/assign_room")
+def zigbee_assign_room(
+    friendly_name: str = Form(...),
+    building: str = Form(""),
+    floor: str = Form(""),
+    room: str = Form("")
+):
+    """Assigne localisation (building/floor/room) à un device Zigbee."""
+    try:
+        cfg = load_config(CONFIG_PATH)
+
+        # Trouver ou créer device
+        device = None
+        for dev in cfg.get("devices", []):
+            if dev.get("ip") == f"zigbee:{friendly_name}":
+                device = dev
+                break
+
+        if not device:
+            # Créer nouveau device dans config
+            device = {
+                "ip": f"zigbee:{friendly_name}",
+                "name": friendly_name,
+                "driver": "zigbee",
+                "type": "sensor",
+                "building": "",
+                "floor": "",
+                "room": "",
+                "snmp": {},
+                "pjlink": {},
+                "zigbee": {
+                    "ieee_address": "",
+                    "device_type": "unknown"
+                },
+                "expectations": {
+                    "always_on": False,
+                    "alert_after_s": 3600,  # 1h pour capteurs Zigbee
+                    "schedule": {}
+                }
+            }
+            cfg.setdefault("devices", []).append(device)
+
+        # Mettre à jour localisation
+        device["building"] = building.strip()
+        device["floor"] = floor.strip()
+        device["room"] = room.strip()
+
+        save_config(CONFIG_PATH, cfg)
+
+    except Exception as e:
+        print(f"⚠️  Assign room failed: {e}")
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/zigbee/remove")
+def zigbee_remove(ieee_address: str = Form(...)):
+    """Supprime un device du réseau Zigbee."""
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+
+        # Publier request remove vers Zigbee2MQTT
+        mqtt.remove_device(ieee_address, force=False)
+
+        # Retirer de config.json (optionnel, recherche par ieee_address)
+        cfg = load_config(CONFIG_PATH)
+        devices = cfg.get("devices", [])
+        cfg["devices"] = [
+            d for d in devices
+            if d.get("zigbee", {}).get("ieee_address", "") != ieee_address
+        ]
+        save_config(CONFIG_PATH, cfg)
+
+    except Exception as e:
+        print(f"⚠️  Remove device failed: {e}")
 
     return RedirectResponse("/", status_code=303)
 

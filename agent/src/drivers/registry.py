@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 from src.drivers.ping import probe as ping_probe
 from src.drivers.snmp import probe as snmp_probe
 from src.drivers.pjlink import probe as pjlink_probe
+from src.drivers.zigbee import probe as zigbee_probe
 
 # Type signature commune à nos drivers:
 # - device: dict (config device)
@@ -25,6 +26,7 @@ def get_registry() -> Dict[str, DriverFn]:
         "ping": ping_probe,
         "snmp": snmp_probe,
         "pjlink": pjlink_probe,
+        "zigbee": zigbee_probe,
     }
 
 

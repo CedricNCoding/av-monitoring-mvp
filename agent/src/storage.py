@@ -245,6 +245,28 @@ def _normalize_driver_blocks(device: Dict[str, Any]) -> None:
     else:
         device["pjlink"] = {}
 
+    # ZIGBEE block
+    zigbee = _as_dict(device.get("zigbee"))
+    if driver == "zigbee" or zigbee:
+        # Valider format IP (doit commencer par "zigbee:")
+        ip = device.get("ip", "")
+        if not ip.startswith("zigbee:"):
+            # Migration: si friendly_name dans bloc zigbee, construire ip
+            friendly_name = zigbee.get("friendly_name") or ip
+            if friendly_name and not friendly_name.startswith("zigbee:"):
+                device["ip"] = f"zigbee:{friendly_name}"
+            elif not ip:
+                # IP vide, impossible de normaliser
+                device["ip"] = "zigbee:unknown"
+
+        zigbee_out = {
+            "ieee_address": (_as_str(zigbee.get("ieee_address")) or "").strip(),
+            "device_type": (_as_str(zigbee.get("device_type")) or "unknown").strip(),
+        }
+        device["zigbee"] = zigbee_out
+    else:
+        device["zigbee"] = {}
+
 
 def _normalize_device(d: Dict[str, Any], fallback_tz: str) -> Optional[Dict[str, Any]]:
     if not isinstance(d, dict):
