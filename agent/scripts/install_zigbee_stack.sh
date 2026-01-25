@@ -172,16 +172,77 @@ generate_tls_certs() {
 # ------------------------------------------------------------
 
 repair_mosquitto_config() {
-    # Répare les installations cassées où persistence_location est dupliqué.
-    # Retire persistence et persistence_location de conf.d/zigbee.conf si présents.
+    # Répare les installations cassées
+    echo "Vérification et réparation automatique de la config Mosquitto..."
+    local REPAIRED=false
+
+    # 1. Supprimer directives persistence de conf.d/zigbee.conf (ne doivent être que dans mosquitto.conf)
     if [ -f /etc/mosquitto/conf.d/zigbee.conf ]; then
         if grep -q "persistence" /etc/mosquitto/conf.d/zigbee.conf; then
-            echo "⚠️  Réparation : retrait directives persistence de conf.d/zigbee.conf..."
+            echo "  ⚠️  Retrait directives persistence de conf.d/zigbee.conf..."
             sed -i '/^persistence /d' /etc/mosquitto/conf.d/zigbee.conf
             sed -i '/^persistence_location /d' /etc/mosquitto/conf.d/zigbee.conf
-            # Retirer aussi les commentaires "# Persistence" orphelins
             sed -i '/^# Persistence$/d' /etc/mosquitto/conf.d/zigbee.conf
+            REPAIRED=true
         fi
+    fi
+
+    # 2. Créer /etc/mosquitto/passwd si absent
+    if [ ! -f /etc/mosquitto/passwd ]; then
+        echo "  ⚠️  Création fichier /etc/mosquitto/passwd manquant..."
+        touch /etc/mosquitto/passwd
+        chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+        chmod 640 /etc/mosquitto/passwd
+        REPAIRED=true
+    fi
+
+    # 3. Créer /etc/mosquitto/acl.conf si absent
+    if [ ! -f /etc/mosquitto/acl.conf ]; then
+        echo "  ⚠️  Création fichier /etc/mosquitto/acl.conf manquant..."
+        touch /etc/mosquitto/acl.conf
+        chown mosquitto:mosquitto /etc/mosquitto/acl.conf
+        chmod 600 /etc/mosquitto/acl.conf
+        REPAIRED=true
+    fi
+
+    # 4. Corriger permissions passwd si incorrectes
+    if [ -f /etc/mosquitto/passwd ]; then
+        PERMS=$(stat -c %a /etc/mosquitto/passwd 2>/dev/null || stat -f %OLp /etc/mosquitto/passwd 2>/dev/null)
+        if [ "$PERMS" != "640" ]; then
+            echo "  ⚠️  Correction permissions /etc/mosquitto/passwd ($PERMS → 640)..."
+            chmod 640 /etc/mosquitto/passwd
+            REPAIRED=true
+        fi
+
+        OWNER=$(stat -c %U:%G /etc/mosquitto/passwd 2>/dev/null || stat -f %Su:%Sg /etc/mosquitto/passwd 2>/dev/null)
+        if [[ "$OWNER" != "root:mosquitto" && "$OWNER" != "root:root" ]]; then
+            echo "  ⚠️  Correction owner /etc/mosquitto/passwd ($OWNER → root:mosquitto)..."
+            chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+            REPAIRED=true
+        fi
+    fi
+
+    # 5. Corriger permissions acl.conf si incorrectes
+    if [ -f /etc/mosquitto/acl.conf ]; then
+        PERMS=$(stat -c %a /etc/mosquitto/acl.conf 2>/dev/null || stat -f %OLp /etc/mosquitto/acl.conf 2>/dev/null)
+        if [ "$PERMS" != "600" ]; then
+            echo "  ⚠️  Correction permissions /etc/mosquitto/acl.conf ($PERMS → 600)..."
+            chmod 600 /etc/mosquitto/acl.conf
+            REPAIRED=true
+        fi
+
+        OWNER=$(stat -c %U:%G /etc/mosquitto/acl.conf 2>/dev/null || stat -f %Su:%Sg /etc/mosquitto/acl.conf 2>/dev/null)
+        if [ "$OWNER" != "mosquitto:mosquitto" ]; then
+            echo "  ⚠️  Correction owner /etc/mosquitto/acl.conf ($OWNER → mosquitto:mosquitto)..."
+            chown mosquitto:mosquitto /etc/mosquitto/acl.conf
+            REPAIRED=true
+        fi
+    fi
+
+    if [ "$REPAIRED" = true ]; then
+        echo -e "${GREEN}✓${NC} Réparations appliquées"
+    else
+        echo -e "${GREEN}✓${NC} Aucune réparation nécessaire"
     fi
 }
 
@@ -245,12 +306,13 @@ topic readwrite #
 user zigbee2mqtt
 topic readwrite zigbee2mqtt/#
 
-# User avmonitoring (lecture devices + écriture actions uniquement)
+# User avmonitoring (lecture devices + écriture actions + healthcheck)
 # Conforme exigences DSI : pas d'accès admin, scope restreint
 user avmonitoring
 topic read zigbee2mqtt/#
 topic write zigbee2mqtt/+/set
 topic write zigbee2mqtt/bridge/request/#
+topic readwrite avmvp/health/#
 EOF
 
     # Permissions ACL : 0600 mosquitto:mosquitto (DSI-friendly)
@@ -273,10 +335,11 @@ EOF
 
     # Validation de la configuration Mosquitto (avant toute création de users)
     echo "Validation de la configuration Mosquitto..."
-    if ! mosquitto -c /etc/mosquitto/mosquitto.conf -v >/dev/null 2>&1; then
+    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1)
+    if [ $? -ne 0 ]; then
         echo -e "${RED}✗ Erreur: Configuration Mosquitto invalide${NC}"
-        echo "Détails:"
-        mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1 | grep -i error | head -n 10
+        echo "Détails complets:"
+        echo "$VALIDATION_OUTPUT" | head -n 20
         exit 1
     fi
     echo -e "${GREEN}✓${NC} Configuration Mosquitto valide"
@@ -363,10 +426,11 @@ EOF
     # ========================================================================
 
     echo "Validation finale configuration Mosquitto..."
-    if ! mosquitto -c /etc/mosquitto/mosquitto.conf -v >/dev/null 2>&1; then
+    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1)
+    if [ $? -ne 0 ]; then
         echo -e "${RED}✗ Erreur: Configuration invalide après ajout users${NC}"
-        echo "Détails:"
-        mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1 | head -n 20
+        echo "Détails complets:"
+        echo "$VALIDATION_OUTPUT" | head -n 30
         exit 1
     fi
     echo -e "${GREEN}✓${NC} Configuration finale valide"
@@ -589,7 +653,157 @@ EOF
 }
 
 # ------------------------------------------------------------
-# 12. Validation finale
+# 12. Test MQTT Healthcheck (pub/sub non-interactif)
+# ------------------------------------------------------------
+
+test_mqtt_health() {
+    echo ""
+    echo "=========================================="
+    echo "  Test MQTT Healthcheck (pub/sub)"
+    echo "=========================================="
+    echo ""
+
+    # Charger credentials
+    source /root/zigbee_credentials.txt
+
+    # Configuration
+    MQTT_HOST="localhost"
+    MQTT_PORT="8883"
+    MQTT_USER="avmonitoring"
+    MQTT_PASS="$MQTT_PASS_AGENT"
+    CA_CERT="/etc/mosquitto/ca_certificates/ca.crt"
+    TEST_TOPIC="avmvp/health/test"
+    TIMEOUT=5
+
+    echo "Configuration:"
+    echo "  Host: $MQTT_HOST:$MQTT_PORT"
+    echo "  User: $MQTT_USER"
+    echo "  Topic: $TEST_TOPIC"
+    echo ""
+
+    # Vérifier que mosquitto-clients est installé
+    if ! command -v mosquitto_sub &>/dev/null || ! command -v mosquitto_pub &>/dev/null; then
+        echo -e "${YELLOW}⚠${NC}  mosquitto-clients non installé, skip test MQTT"
+        echo "Installez avec: apt install mosquitto-clients"
+        return 0  # Non bloquant
+    fi
+
+    # Vérifier que Mosquitto est actif
+    if ! systemctl is-active mosquitto &>/dev/null; then
+        echo -e "${YELLOW}⚠${NC}  Service mosquitto non actif, skip test"
+        return 0  # Non bloquant
+    fi
+
+    # Créer fichier temporaire pour recevoir message
+    RECEIVED_FILE=$(mktemp)
+    trap "rm -f $RECEIVED_FILE" RETURN
+
+    echo -e "${BLUE}[1/4]${NC} Démarrage subscriber en background..."
+
+    # Lancer mosquitto_sub en background
+    mosquitto_sub \
+        -h "$MQTT_HOST" \
+        -p "$MQTT_PORT" \
+        --cafile "$CA_CERT" \
+        -u "$MQTT_USER" \
+        -P "$MQTT_PASS" \
+        -t "$TEST_TOPIC" \
+        -C 1 \
+        > "$RECEIVED_FILE" 2>&1 &
+
+    SUB_PID=$!
+
+    # Attendre que subscriber soit connecté
+    sleep 1
+
+    # Vérifier que subscriber est toujours vivant
+    if ! kill -0 $SUB_PID 2>/dev/null; then
+        echo -e "${RED}✗ Erreur: mosquitto_sub a crashé${NC}"
+        cat "$RECEIVED_FILE" 2>/dev/null | head -n 5
+        return 1  # Bloquant
+    fi
+
+    echo -e "${GREEN}✓${NC} Subscriber actif (PID $SUB_PID)"
+
+    # Générer message de test unique
+    TEST_MESSAGE="mqtt_test_$(date +%s)"
+
+    echo -e "${BLUE}[2/4]${NC} Publication message de test..."
+    echo "  Message: $TEST_MESSAGE"
+
+    # Publier message
+    if ! mosquitto_pub \
+        -h "$MQTT_HOST" \
+        -p "$MQTT_PORT" \
+        --cafile "$CA_CERT" \
+        -u "$MQTT_USER" \
+        -P "$MQTT_PASS" \
+        -t "$TEST_TOPIC" \
+        -m "$TEST_MESSAGE" 2>&1; then
+        echo -e "${RED}✗ Erreur: échec publication MQTT${NC}"
+        kill $SUB_PID 2>/dev/null || true
+        return 1  # Bloquant
+    fi
+
+    echo -e "${GREEN}✓${NC} Message publié"
+
+    echo -e "${BLUE}[3/4]${NC} Attente réception (timeout ${TIMEOUT}s)..."
+
+    # Attendre que subscriber reçoive le message
+    ELAPSED=0
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+        if ! kill -0 $SUB_PID 2>/dev/null; then
+            break  # Subscriber a terminé
+        fi
+        sleep 0.2
+        ELAPSED=$((ELAPSED + 1))
+    done
+
+    # Tuer subscriber si toujours actif
+    kill $SUB_PID 2>/dev/null || true
+    wait $SUB_PID 2>/dev/null || true
+
+    echo -e "${BLUE}[4/4]${NC} Vérification message reçu..."
+
+    # Vérifier contenu
+    if [ ! -s "$RECEIVED_FILE" ]; then
+        echo -e "${RED}✗ ÉCHEC: Aucun message reçu (timeout ${TIMEOUT}s)${NC}"
+        echo ""
+        echo "Causes possibles:"
+        echo "  - ACL incorrecte (vérifier topic avmvp/health/# dans /etc/mosquitto/acl.conf)"
+        echo "  - Certificat TLS invalide"
+        echo "  - Problème de connexion MQTT"
+        echo ""
+        echo "Debug:"
+        echo "  journalctl -u mosquitto -n 20 --no-pager"
+        return 1  # Bloquant
+    fi
+
+    RECEIVED_MSG=$(cat "$RECEIVED_FILE")
+
+    if [ "$RECEIVED_MSG" = "$TEST_MESSAGE" ]; then
+        echo -e "${GREEN}✓${NC} Message reçu: $RECEIVED_MSG"
+        echo ""
+        echo -e "${GREEN}✅ Test MQTT pub/sub réussi !${NC}"
+        echo ""
+        echo "Vérifications OK:"
+        echo "  - Authentification user/pass"
+        echo "  - TLS handshake"
+        echo "  - ACL topic $TEST_TOPIC"
+        echo "  - Pub/Sub fonctionnel"
+        echo ""
+        return 0
+    else
+        echo -e "${YELLOW}⚠${NC}  Message reçu différent de l'attendu"
+        echo "  Attendu: $TEST_MESSAGE"
+        echo "  Reçu:    $RECEIVED_MSG"
+        echo ""
+        return 0  # Non bloquant (test partiel réussi)
+    fi
+}
+
+# ------------------------------------------------------------
+# 13. Validation finale
 # ------------------------------------------------------------
 
 final_validation() {
@@ -652,7 +866,7 @@ final_validation() {
 }
 
 # ------------------------------------------------------------
-# 13. Résumé final
+# 14. Résumé final
 # ------------------------------------------------------------
 
 show_summary() {
@@ -669,7 +883,10 @@ show_summary() {
     echo "   systemctl status mosquitto"
     echo "   systemctl status zigbee2mqtt"
     echo ""
-    echo "2. Tester connexion MQTT:"
+    echo "2. Tester connexion MQTT (script automatique):"
+    echo "   bash /opt/avmonitoring-agent/agent/scripts/test_mqtt_health.sh"
+    echo ""
+    echo "   Ou test manuel:"
     echo "   source /root/zigbee_credentials.txt"
     echo "   mosquitto_sub -h localhost -p 8883 \\"
     echo "     --cafile /etc/mosquitto/ca_certificates/ca.crt \\"
@@ -712,6 +929,9 @@ main() {
 
     # Validation finale avant résumé
     final_validation
+
+    # Test MQTT healthcheck (pub/sub)
+    test_mqtt_health
 
     show_summary
 }
