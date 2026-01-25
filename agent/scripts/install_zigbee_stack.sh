@@ -171,17 +171,37 @@ generate_tls_certs() {
 # 7. Configuration Mosquitto (TLS + ACL)
 # ------------------------------------------------------------
 
+repair_mosquitto_config() {
+    # Répare les installations cassées où persistence_location est dupliqué.
+    # Retire persistence et persistence_location de conf.d/zigbee.conf si présents.
+    if [ -f /etc/mosquitto/conf.d/zigbee.conf ]; then
+        if grep -q "persistence" /etc/mosquitto/conf.d/zigbee.conf; then
+            echo "⚠️  Réparation : retrait directives persistence de conf.d/zigbee.conf..."
+            sed -i '/^persistence /d' /etc/mosquitto/conf.d/zigbee.conf
+            sed -i '/^persistence_location /d' /etc/mosquitto/conf.d/zigbee.conf
+            # Retirer aussi les commentaires "# Persistence" orphelins
+            sed -i '/^# Persistence$/d' /etc/mosquitto/conf.d/zigbee.conf
+        fi
+    fi
+}
+
 configure_mosquitto() {
     echo "Configuration de Mosquitto..."
 
+    # Réparer config existante si cassée
+    repair_mosquitto_config
+
     # Backup config si existe
     if [ -f /etc/mosquitto/conf.d/zigbee.conf ]; then
-        mv /etc/mosquitto/conf.d/zigbee.conf /etc/mosquitto/conf.d/zigbee.conf.bak 2>/dev/null || true
+        cp /etc/mosquitto/conf.d/zigbee.conf /etc/mosquitto/conf.d/zigbee.conf.bak 2>/dev/null || true
     fi
 
     # Configuration listener TLS
+    # IMPORTANT: Ne PAS inclure persistence/persistence_location ici (déjà dans mosquitto.conf)
     cat > /etc/mosquitto/conf.d/zigbee.conf <<'EOF'
 # Zigbee2MQTT TLS listener (port 8883 uniquement)
+# Managed by install_zigbee_stack.sh - Do not edit manually
+
 listener 8883
 certfile /etc/mosquitto/ca_certificates/server.crt
 cafile /etc/mosquitto/ca_certificates/ca.crt
@@ -196,10 +216,6 @@ password_file /etc/mosquitto/passwd
 # ACL (Access Control List)
 acl_file /etc/mosquitto/acl.conf
 
-# Persistence
-persistence true
-persistence_location /var/lib/mosquitto/
-
 # Logs
 log_dest syslog
 log_type error
@@ -207,57 +223,168 @@ log_type warning
 log_type notice
 EOF
 
-    # Configuration ACL
+    # Configuration ACL (Access Control List)
+    # Sécurité DSI : fichier ACL en lecture seule pour mosquitto uniquement
+    echo "Configuration ACL Mosquitto..."
+
+    # Backup si fichier existe
+    if [ -f /etc/mosquitto/acl.conf ]; then
+        cp /etc/mosquitto/acl.conf /etc/mosquitto/acl.conf.bak 2>/dev/null || true
+    fi
+
     cat > /etc/mosquitto/acl.conf <<'EOF'
 # ACL Mosquitto pour Zigbee
 # Format: user <username> puis topic read|write|readwrite <topic>
+# Sécurité : principe du moindre privilège (least privilege)
 
-# User admin (gestion complète)
+# User admin (gestion complète - usage interne uniquement)
 user admin
 topic readwrite #
 
-# User zigbee2mqtt (lecture/écriture sur ses topics)
+# User zigbee2mqtt (lecture/écriture uniquement sur ses topics)
 user zigbee2mqtt
 topic readwrite zigbee2mqtt/#
 
 # User avmonitoring (lecture devices + écriture actions uniquement)
+# Conforme exigences DSI : pas d'accès admin, scope restreint
 user avmonitoring
 topic read zigbee2mqtt/#
 topic write zigbee2mqtt/+/set
 topic write zigbee2mqtt/bridge/request/#
 EOF
 
-    chmod 644 /etc/mosquitto/acl.conf
+    # Permissions ACL : 0600 mosquitto:mosquitto (DSI-friendly)
+    # Justification : fichier sensible contenant règles d'accès
+    chown mosquitto:mosquitto /etc/mosquitto/acl.conf
+    chmod 600 /etc/mosquitto/acl.conf
+    echo -e "${GREEN}✓${NC} ACL configuré (mosquitto:mosquitto 0600)"
 
-    # Création des utilisateurs MQTT
-    if [ ! -f /etc/mosquitto/passwd ]; then
-        touch /etc/mosquitto/passwd
-        chmod 600 /etc/mosquitto/passwd
+    # S'assurer que mosquitto.conf a les directives persistence (normalement présentes par défaut)
+    # Si absentes, les ajouter (idempotent)
+    if ! grep -q "^persistence true" /etc/mosquitto/mosquitto.conf 2>/dev/null; then
+        echo "Ajout directives persistence dans mosquitto.conf..."
+        cat >> /etc/mosquitto/mosquitto.conf <<'EOF'
+
+# Persistence (ajouté par install_zigbee_stack.sh)
+persistence true
+persistence_location /var/lib/mosquitto/
+EOF
     fi
 
-    # Générer mots de passe sécurisés
-    MQTT_PASS_ADMIN=$(openssl rand -base64 16)
-    MQTT_PASS_Z2M=$(openssl rand -base64 16)
-    MQTT_PASS_AGENT=$(openssl rand -base64 16)
+    # Validation de la configuration Mosquitto (avant toute création de users)
+    echo "Validation de la configuration Mosquitto..."
+    if ! mosquitto -c /etc/mosquitto/mosquitto.conf -v >/dev/null 2>&1; then
+        echo -e "${RED}✗ Erreur: Configuration Mosquitto invalide${NC}"
+        echo "Détails:"
+        mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1 | grep -i error | head -n 10
+        exit 1
+    fi
+    echo -e "${GREEN}✓${NC} Configuration Mosquitto valide"
 
-    # Créer les users (mosquitto_passwd écrase le fichier avec -c la première fois)
-    mosquitto_passwd -c -b /etc/mosquitto/passwd admin "$MQTT_PASS_ADMIN"
-    mosquitto_passwd -b /etc/mosquitto/passwd zigbee2mqtt "$MQTT_PASS_Z2M"
-    mosquitto_passwd -b /etc/mosquitto/passwd avmonitoring "$MQTT_PASS_AGENT"
+    # ========================================================================
+    # Gestion des utilisateurs MQTT (password_file)
+    # Sécurité DSI : permissions strictes, idempotence garantie
+    # ========================================================================
 
-    # Sauvegarder les credentials
+    echo "Configuration des utilisateurs MQTT..."
+
+    # Créer password_file si absent
+    if [ ! -f /etc/mosquitto/passwd ]; then
+        touch /etc/mosquitto/passwd
+        echo -e "${GREEN}✓${NC} Fichier password créé"
+    fi
+
+    # Permissions password_file : root:mosquitto 0640 (DSI-friendly)
+    # Justification :
+    # - root:mosquitto → seul root peut modifier, mosquitto peut lire
+    # - 0640 → lecture/écriture root, lecture groupe mosquitto, rien pour others
+    # - Conforme principe moindre privilège
+    chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+    chmod 640 /etc/mosquitto/passwd
+
+    # Gestion idempotente des credentials
+    # Si /root/zigbee_credentials.txt existe, réutiliser les passwords (idempotent)
+    # Sinon, générer de nouveaux passwords
+    if [ -f /root/zigbee_credentials.txt ]; then
+        echo "Credentials existants détectés, réutilisation..."
+        source /root/zigbee_credentials.txt
+    else
+        echo "Génération de nouveaux credentials sécurisés..."
+        MQTT_PASS_ADMIN=$(openssl rand -base64 16)
+        MQTT_PASS_Z2M=$(openssl rand -base64 16)
+        MQTT_PASS_AGENT=$(openssl rand -base64 16)
+    fi
+
+    # Créer/Mettre à jour les users de manière idempotente
+    # Note : mosquitto_passwd -b (batch mode) met à jour si user existe, crée sinon
+    # Ne pas utiliser -c (create) qui écrase le fichier !
+
+    # Vérifier si users existent déjà
+    USER_EXISTS=false
+    if grep -q "^admin:" /etc/mosquitto/passwd 2>/dev/null; then
+        USER_EXISTS=true
+        echo "Users MQTT déjà présents, mise à jour si nécessaire..."
+    else
+        echo "Création des users MQTT..."
+    fi
+
+    # Mise à jour/création users (sans -c pour ne pas écraser)
+    if [ "$USER_EXISTS" = false ]; then
+        # Première création : utiliser -c uniquement pour le premier user
+        mosquitto_passwd -c -b /etc/mosquitto/passwd admin "$MQTT_PASS_ADMIN"
+        mosquitto_passwd -b /etc/mosquitto/passwd zigbee2mqtt "$MQTT_PASS_Z2M"
+        mosquitto_passwd -b /etc/mosquitto/passwd avmonitoring "$MQTT_PASS_AGENT"
+    else
+        # Mise à jour : pas de -c
+        mosquitto_passwd -b /etc/mosquitto/passwd admin "$MQTT_PASS_ADMIN" 2>/dev/null || true
+        mosquitto_passwd -b /etc/mosquitto/passwd zigbee2mqtt "$MQTT_PASS_Z2M" 2>/dev/null || true
+        mosquitto_passwd -b /etc/mosquitto/passwd avmonitoring "$MQTT_PASS_AGENT" 2>/dev/null || true
+    fi
+
+    # Réappliquer permissions après modification (mosquitto_passwd peut les changer)
+    chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+    chmod 640 /etc/mosquitto/passwd
+
+    # Sauvegarder les credentials (root-only, 0600)
     cat > /root/zigbee_credentials.txt <<EOF
+# Credentials MQTT Zigbee (généré par install_zigbee_stack.sh)
+# Fichier sensible : permissions 0600, ownership root:root
 MQTT_PASS_ADMIN=$MQTT_PASS_ADMIN
 MQTT_PASS_Z2M=$MQTT_PASS_Z2M
 MQTT_PASS_AGENT=$MQTT_PASS_AGENT
 EOF
     chmod 600 /root/zigbee_credentials.txt
+    chown root:root /root/zigbee_credentials.txt
 
-    # Activer et démarrer Mosquitto
+    echo -e "${GREEN}✓${NC} Users MQTT configurés (root:mosquitto 0640)"
+
+    # ========================================================================
+    # Validation finale AVANT restart (critique)
+    # ========================================================================
+
+    echo "Validation finale configuration Mosquitto..."
+    if ! mosquitto -c /etc/mosquitto/mosquitto.conf -v >/dev/null 2>&1; then
+        echo -e "${RED}✗ Erreur: Configuration invalide après ajout users${NC}"
+        echo "Détails:"
+        mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1 | head -n 20
+        exit 1
+    fi
+    echo -e "${GREEN}✓${NC} Configuration finale valide"
+
+    # Activer et démarrer Mosquitto (seulement après validation)
     systemctl enable mosquitto
     systemctl restart mosquitto
 
-    echo -e "${GREEN}✓${NC} Mosquitto configuré (TLS port 8883, ACL active)"
+    # Vérifier que le service a bien démarré
+    sleep 2
+    if ! systemctl is-active mosquitto &> /dev/null; then
+        echo -e "${RED}✗ Erreur: Mosquitto n'a pas démarré${NC}"
+        echo "Logs:"
+        journalctl -u mosquitto -n 20 --no-pager
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓${NC} Mosquitto configuré et démarré (TLS port 8883, ACL active)"
     echo -e "${GREEN}✓${NC} Credentials sauvegardés: /root/zigbee_credentials.txt"
 }
 
@@ -462,7 +589,70 @@ EOF
 }
 
 # ------------------------------------------------------------
-# 12. Résumé final
+# 12. Validation finale
+# ------------------------------------------------------------
+
+final_validation() {
+    echo ""
+    echo "=========================================="
+    echo "  Validation finale de l'installation"
+    echo "=========================================="
+    echo ""
+
+    local ERRORS=0
+
+    # 1. Valider config Mosquitto
+    echo -n "Configuration Mosquitto... "
+    if mosquitto -c /etc/mosquitto/mosquitto.conf -v >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        echo "Erreur de configuration Mosquitto:"
+        mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1 | grep -i error | head -n 5
+        ((ERRORS++))
+    fi
+
+    # 2. Vérifier service Mosquitto
+    echo -n "Service Mosquitto... "
+    if systemctl is-active mosquitto &> /dev/null; then
+        echo -e "${GREEN}✓ actif${NC}"
+    else
+        echo -e "${RED}✗ non actif${NC}"
+        ((ERRORS++))
+    fi
+
+    # 3. Vérifier port MQTT
+    echo -n "Port MQTT 8883... "
+    if ss -tln 2>/dev/null | grep -q ':8883' || netstat -tln 2>/dev/null | grep -q ':8883'; then
+        echo -e "${GREEN}✓ en écoute${NC}"
+    else
+        echo -e "${RED}✗ non ouvert${NC}"
+        ((ERRORS++))
+    fi
+
+    # 4. Vérifier service Zigbee2MQTT (warning uniquement si dongle présent)
+    echo -n "Service Zigbee2MQTT... "
+    if systemctl is-active zigbee2mqtt &> /dev/null; then
+        echo -e "${GREEN}✓ actif${NC}"
+    elif [ -n "$DONGLE" ]; then
+        echo -e "${YELLOW}⚠ non actif (dongle détecté mais service down)${NC}"
+    else
+        echo -e "${YELLOW}⚠ non actif (normal, pas de dongle)${NC}"
+    fi
+
+    echo ""
+    if [ $ERRORS -gt 0 ]; then
+        echo -e "${RED}✗ Installation terminée avec $ERRORS erreur(s)${NC}"
+        echo "Consultez les logs: journalctl -u mosquitto -n 50"
+        return 1
+    else
+        echo -e "${GREEN}✅ Validation réussie !${NC}"
+        return 0
+    fi
+}
+
+# ------------------------------------------------------------
+# 13. Résumé final
 # ------------------------------------------------------------
 
 show_summary() {
@@ -519,6 +709,9 @@ main() {
     install_zigbee2mqtt_service
 
     configure_agent_mqtt
+
+    # Validation finale avant résumé
+    final_validation
 
     show_summary
 }
