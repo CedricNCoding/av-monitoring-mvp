@@ -84,6 +84,9 @@ fi
 
 echo -e "${GREEN}✓${NC} Code téléchargé"
 
+# Ajuster les permissions AVANT de créer le venv
+chown -R "$AGENT_USER:$AGENT_USER" "$INSTALL_DIR"
+
 echo -e "${BLUE}[4/10]${NC} Création de l'environnement virtuel Python..."
 
 # Créer venv
