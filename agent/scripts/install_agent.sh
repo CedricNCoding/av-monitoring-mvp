@@ -91,11 +91,20 @@ echo -e "${BLUE}[4/10]${NC} Création de l'environnement virtuel Python..."
 
 # Créer venv
 cd "$AGENT_DIR"
+
+# Si venv existe avec mauvaises permissions, le supprimer
+if [ -d "venv" ]; then
+    if [ ! -O "venv" ] || [ "$(stat -c %U venv 2>/dev/null || stat -f %Su venv 2>/dev/null)" != "$AGENT_USER" ]; then
+        echo -e "${YELLOW}⚠${NC} Venv existant avec mauvaises permissions, suppression..."
+        rm -rf venv
+    else
+        echo -e "${YELLOW}⚠${NC} Venv existe déjà, conservation"
+    fi
+fi
+
 if [ ! -d "venv" ]; then
     sudo -u "$AGENT_USER" python3 -m venv venv
     echo -e "${GREEN}✓${NC} Venv créé"
-else
-    echo -e "${YELLOW}⚠${NC} Venv existe déjà"
 fi
 
 echo -e "${BLUE}[5/10]${NC} Installation des dépendances Python..."
