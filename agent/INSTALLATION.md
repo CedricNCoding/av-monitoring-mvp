@@ -239,7 +239,7 @@ sudo cp /etc/avmonitoring/config.json /etc/avmonitoring/config.json.backup
 
 # 3. Télécharger la nouvelle version
 cd /tmp
-git clone https://github.com/votre-org/av-monitoring-mvp.git
+git clone https://github.com/CedricNCoding/av-monitoring-mvp.git
 # ou décompresser l'archive
 
 # 4. Copier le nouveau code

@@ -46,7 +46,7 @@ cd avmonitoring-agent
 
 **Option B** : Depuis Git (environnement de test uniquement)
 ```bash
-git clone https://github.com/votre-org/av-monitoring-mvp.git
+git clone https://github.com/CedricNCoding/av-monitoring-mvp.git
 cd av-monitoring-mvp/agent
 ```
 

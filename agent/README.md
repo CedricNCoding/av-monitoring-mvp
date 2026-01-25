@@ -10,7 +10,7 @@ L'agent peut être installé sur un système Linux (Ubuntu/Debian) comme un serv
 
 ```bash
 # 1. Télécharger le code
-git clone https://github.com/votre-org/av-monitoring-mvp.git
+git clone https://github.com/CedricNCoding/av-monitoring-mvp.git
 cd av-monitoring-mvp/agent
 
 # 2. Lancer l'installation
