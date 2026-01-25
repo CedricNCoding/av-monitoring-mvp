@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AV Monitoring — Operations Center</title>
+
+  <!-- Alpine.js pour la réactivité -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- ApexCharts pour heatmaps -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #007AFF;
+      --primary-hover: #0051D5;
+      --bg-main: #F5F5F7;
+      --bg-sidebar: #FFFFFF;
+      --text-main: #1D1D1F;
+      --text-muted: #86868B;
+      --border: #D2D2D7;
+      --success: #34C759;
+      --warning: #FF9500;
+      --danger: #FF3B30;
+      --shadow: rgba(0, 0, 0, 0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* Layout Principal : Sidebar + Contenu */
+    .app-container {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* === SIDEBAR === */
+    .sidebar {
+      width: 240px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0;
+      box-shadow: 4px 0 12px var(--shadow);
+      z-index: 100;
+    }
+
+    .sidebar-logo {
+      padding: 0 24px 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .sidebar-logo .subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 0 12px;
+      overflow-y: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      color: var(--text-main);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .nav-item:hover {
+      background: #F5F5F7;
+    }
+
+    .nav-item.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .nav-item .icon {
+      font-size: 18px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-section {
+      padding: 16px 16px 8px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    /* === MAIN CONTENT === */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Topbar avec fil d'Ariane */
+    .topbar {
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px var(--shadow);
+      z-index: 50;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .breadcrumb a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    .breadcrumb .separator {
+      color: var(--text-muted);
+    }
+
+    .breadcrumb .current {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Commutateur Mode Intervention */
+    .intervention-toggle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .intervention-toggle label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .switch {
+      position: relative;
+      width: 48px;
+      height: 28px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #E5E5EA;
+      transition: .3s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    input:checked + .slider {
+      background-color: var(--danger);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    /* Zone de travail scrollable */
+    .workspace {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+    }
+
+    /* Cards */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px var(--shadow);
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    /* Accordéons Hiérarchiques */
+    .hierarchy {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: white;
+    }
+
+    .hierarchy-item {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hierarchy-item:last-child {
+      border-bottom: none;
+    }
+
+    .hierarchy-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+    }
+
+    .hierarchy-header:hover {
+      background: #F9F9F9;
+    }
+
+    .hierarchy-header.level-1 {
+      font-size: 16px;
+      font-weight: 700;
+      background: #FAFAFA;
+    }
+
+    .hierarchy-header.level-2 {
+      font-size: 15px;
+      font-weight: 600;
+      padding-left: 40px;
+    }
+
+    .hierarchy-header.level-3 {
+      font-size: 14px;
+      font-weight: 500;
+      padding-left: 60px;
+    }
+
+    .hierarchy-icon {
+      transition: transform 0.3s;
+      color: var(--text-muted);
+    }
+
+    .hierarchy-icon.expanded {
+      transform: rotate(90deg);
+    }
+
+    .hierarchy-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease-out;
+    }
+
+    .hierarchy-content.expanded {
+      max-height: 5000px;
+    }
+
+    /* Device Row */
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px 12px 80px;
+      border-top: 1px solid #F0F0F0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .device-row:hover {
+      background: #F9F9F9;
+    }
+
+    .device-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .device-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .device-ip {
+      font-family: 'SF Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .device-status {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .device-status.online {
+      background: #D1FAE5;
+      color: #065F46;
+    }
+
+    .device-status.offline {
+      background: #FEE2E2;
+      color: #991B1B;
+    }
+
+    .device-status.unknown {
+      background: #F3F4F6;
+      color: #6B7280;
+    }
+
+    /* Device Details (Inline Accordion) */
+    .device-details {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease-out;
+      background: #FAFBFC;
+    }
+
+    .device-details.expanded {
+      max-height: 800px;
+    }
+
+    .device-details-content {
+      padding: 24px 20px 24px 80px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .detail-group h4 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 13px;
+      border-bottom: 1px solid #ECECEC;
+    }
+
+    .detail-row:last-child {
+      border-bottom: none;
+    }
+
+    .detail-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .detail-value {
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* Bandeau Intelligence Site */
+    .site-intel {
+      background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+      color: white;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .site-intel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .site-intel h3 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .site-intel-toggle {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .site-intel-content {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .intel-item h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      opacity: 0.8;
+      margin-bottom: 6px;
+      letter-spacing: 0.05em;
+    }
+
+    .intel-item p {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    /* Heatmap Container */
+    .heatmap-container {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    /* KPIs */
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    /* Utilities */
+    .hidden {
+      display: none !important;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Application Alpine.js -->
+  <div x-data="app()" class="app-container">
+
+    <!-- === SIDEBAR === -->
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <h1>AV Monitoring</h1>
+        <div class="subtitle">Operations Center</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">Navigation</div>
+
+        <a href="#" @click.prevent="navigateTo('overview')"
+           class="nav-item" :class="{ 'active': currentView === 'overview' }">
+          <span class="icon">🏠</span>
+          <span>Vue d'ensemble</span>
+        </a>
+
+        <a href="#" @click.prevent="navigateTo('inventory')"
+           class="nav-item" :class="{ 'active': currentView === 'inventory' }">
+          <span class="icon">📦</span>
+          <span>Inventaire</span>
+        </a>
+
+        <a href="#" @click.prevent="navigateTo('heatmap')"
+           class="nav-item" :class="{ 'active': currentView === 'heatmap' }">
+          <span class="icon">📊</span>
+          <span>Heatmap 7J</span>
+        </a>
+
+        <div class="nav-section">Sites</div>
+
+        <template x-for="site in sites" :key="site.id">
+          <a href="#" @click.prevent="navigateTo('site', site.id)"
+             class="nav-item" :class="{ 'active': currentView === 'site' && selectedSiteId === site.id }">
+            <span class="icon">📍</span>
+            <span x-text="site.name"></span>
+          </a>
+        </template>
+
+        <div class="nav-section">Administration</div>
+
+        <a href="#" @click.prevent="navigateTo('settings')"
+           class="nav-item" :class="{ 'active': currentView === 'settings' }">
+          <span class="icon">⚙️</span>
+          <span>Réglages</span>
+        </a>
+      </nav>
+    </div>
+
+    <!-- === MAIN CONTENT === -->
+    <div class="main-content">
+
+      <!-- Topbar avec fil d'Ariane -->
+      <div class="topbar">
+        <div class="breadcrumb">
+          <a href="#" @click.prevent="navigateTo('overview')">Accueil</a>
+          <template x-if="breadcrumb.length > 0">
+            <template x-for="(crumb, index) in breadcrumb" :key="index">
+              <span>
+                <span class="separator">›</span>
+                <template x-if="index === breadcrumb.length - 1">
+                  <span class="current" x-text="crumb"></span>
+                </template>
+                <template x-if="index < breadcrumb.length - 1">
+                  <a href="#" x-text="crumb"></a>
+                </template>
+              </span>
+            </template>
+          </template>
+        </div>
+
+        <!-- Commutateur Mode Intervention -->
+        <div class="intervention-toggle" x-show="currentView === 'inventory' || currentView === 'site'">
+          <label>Mode Intervention</label>
+          <label class="switch">
+            <input type="checkbox" x-model="interventionMode" @change="applyInterventionMode()">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Workspace -->
+      <div class="workspace">
+
+        <!-- VUE : Overview -->
+        <div x-show="currentView === 'overview'" class="fade-in">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi-label">Sites</div>
+              <div class="kpi-value" x-text="kpis.sites" style="color: var(--primary)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Équipements</div>
+              <div class="kpi-value" x-text="kpis.devices" style="color: var(--primary)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Online</div>
+              <div class="kpi-value" x-text="kpis.online" style="color: var(--success)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Offline</div>
+              <div class="kpi-value" x-text="kpis.offline" style="color: var(--danger)"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Sites supervisés</div>
+            <template x-for="site in sites" :key="site.id">
+              <div class="device-row" @click="navigateTo('site', site.id)">
+                <div class="device-info">
+                  <div class="device-name" x-text="site.name"></div>
+                  <div class="device-ip" x-text="`${site.device_count} équipements`"></div>
+                </div>
+                <div class="device-status online" x-text="'→ Ouvrir'"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- VUE : Inventaire -->
+        <div x-show="currentView === 'inventory'" class="fade-in">
+          <h2 style="margin-bottom: 20px; font-size: 24px; font-weight: 800;">Inventaire Complet</h2>
+
+          <div class="hierarchy">
+            <template x-for="(buildings, siteId) in hierarchyData" :key="siteId">
+              <div class="hierarchy-item">
+                <div class="hierarchy-header level-1" @click="toggleHierarchy(`site-${siteId}`)">
+                  <span x-text="`Site: ${getSiteName(siteId)}`"></span>
+                  <span class="hierarchy-icon" :class="{ 'expanded': expandedItems[`site-${siteId}`] }">▶</span>
+                </div>
+                <div class="hierarchy-content" :class="{ 'expanded': expandedItems[`site-${siteId}`] }">
+                  <template x-for="(floors, buildingName) in buildings" :key="buildingName">
+                    <div>
+                      <div class="hierarchy-header level-2" @click="toggleHierarchy(`building-${siteId}-${buildingName}`)">
+                        <span x-text="`🏢 ${buildingName}`"></span>
+                        <span class="hierarchy-icon" :class="{ 'expanded': expandedItems[`building-${siteId}-${buildingName}`] }">▶</span>
+                      </div>
+                      <div class="hierarchy-content" :class="{ 'expanded': expandedItems[`building-${siteId}-${buildingName}`] }">
+                        <template x-for="(devices, roomName) in floors" :key="roomName">
+                          <div>
+                            <div class="hierarchy-header level-3" @click="toggleHierarchy(`room-${siteId}-${buildingName}-${roomName}`)">
+                              <span x-text="`📍 ${roomName}`"></span>
+                              <span class="hierarchy-icon" :class="{ 'expanded': expandedItems[`room-${siteId}-${buildingName}-${roomName}`] }">▶</span>
+                            </div>
+                            <div class="hierarchy-content" :class="{ 'expanded': expandedItems[`room-${siteId}-${buildingName}-${roomName}`] }">
+                              <template x-for="device in devices" :key="device.id">
+                                <div>
+                                  <div class="device-row" @click="toggleDeviceDetails(device.id)" :class="{ 'hidden': interventionMode && device.status === 'online' }">
+                                    <div class="device-info">
+                                      <div class="device-name" x-text="device.name"></div>
+                                      <div class="device-ip" x-text="device.ip"></div>
+                                    </div>
+                                    <div class="device-status" :class="device.status" x-text="device.status"></div>
+                                  </div>
+                                  <div class="device-details" :class="{ 'expanded': expandedDevices[device.id] }">
+                                    <div class="device-details-content">
+                                      <div class="detail-group">
+                                        <h4>Informations Générales</h4>
+                                        <div class="detail-row">
+                                          <span class="detail-label">Type</span>
+                                          <span class="detail-value" x-text="device.type"></span>
+                                        </div>
+                                        <div class="detail-row">
+                                          <span class="detail-label">Driver</span>
+                                          <span class="detail-value" x-text="device.driver"></span>
+                                        </div>
+                                        <div class="detail-row">
+                                          <span class="detail-label">Last Seen</span>
+                                          <span class="detail-value" x-text="device.last_seen || '—'"></span>
+                                        </div>
+                                      </div>
+                                      <div class="detail-group">
+                                        <h4>Métriques SNMP</h4>
+                                        <div class="detail-row">
+                                          <span class="detail-label">Uptime</span>
+                                          <span class="detail-value" x-text="device.metrics?.uptime_human || '—'"></span>
+                                        </div>
+                                        <div class="detail-row">
+                                          <span class="detail-label">sysDescr</span>
+                                          <span class="detail-value" style="font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" x-text="device.metrics?.sys_descr || '—'"></span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- VUE : Site Spécifique -->
+        <div x-show="currentView === 'site' && selectedSite" class="fade-in">
+          <!-- Bandeau Intelligence Site -->
+          <div class="site-intel" x-data="{ expanded: true }">
+            <div class="site-intel-header">
+              <h3 x-text="`Intelligence Site: ${selectedSite?.name}`"></h3>
+              <button class="site-intel-toggle" @click="expanded = !expanded" x-text="expanded ? 'Masquer' : 'Afficher'"></button>
+            </div>
+            <div class="site-intel-content" x-show="expanded">
+              <div class="intel-item">
+                <h4>Contact Local</h4>
+                <p x-text="selectedSite?.contact_name || 'Non renseigné'"></p>
+                <p style="font-size: 12px; opacity: 0.9;" x-text="selectedSite?.contact_phone || ''"></p>
+              </div>
+              <div class="intel-item">
+                <h4>Localisation</h4>
+                <p x-text="selectedSite?.address || 'Non renseignée'"></p>
+              </div>
+              <div class="intel-item">
+                <h4>Notes Terrain</h4>
+                <p style="font-size: 13px; font-weight: 400; line-height: 1.6;" x-text="selectedSite?.notes || 'Aucune note'"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inventaire du site (même structure hiérarchique) -->
+          <div class="card">
+            <div class="card-title" x-text="`Équipements du site ${selectedSite?.name}`"></div>
+            <!-- Réutiliser la même structure hiérarchique mais filtrée pour ce site -->
+            <p class="muted">Chargement...</p>
+          </div>
+        </div>
+
+        <!-- VUE : Heatmap -->
+        <div x-show="currentView === 'heatmap'" class="fade-in">
+          <h2 style="margin-bottom: 20px; font-size: 24px; font-weight: 800;">Heatmap de Disponibilité (7 Jours)</h2>
+          <div class="heatmap-container">
+            <div id="heatmap"></div>
+          </div>
+        </div>
+
+        <!-- VUE : Settings -->
+        <div x-show="currentView === 'settings'" class="fade-in">
+          <div class="card">
+            <div class="card-title">Réglages Système</div>
+            <p style="color: var(--text-muted);">Configuration à venir...</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function app() {
+      return {
+        // État de l'application
+        currentView: 'overview',
+        selectedSiteId: null,
+        selectedSite: null,
+        breadcrumb: [],
+        interventionMode: false,
+
+        // Données
+        sites: [],
+        kpis: {
+          sites: 0,
+          devices: 0,
+          online: 0,
+          offline: 0
+        },
+        hierarchyData: {},
+        expandedItems: {},
+        expandedDevices: {},
+
+        // Initialisation
+        async init() {
+          await this.loadSites();
+          await this.loadKPIs();
+          await this.loadInventory();
+        },
+
+        // Navigation
+        navigateTo(view, siteId = null) {
+          this.currentView = view;
+          this.selectedSiteId = siteId;
+
+          // Mise à jour du fil d'Ariane
+          this.breadcrumb = [];
+          if (view === 'inventory') {
+            this.breadcrumb = ['Inventaire'];
+          } else if (view === 'site' && siteId) {
+            const site = this.sites.find(s => s.id === siteId);
+            if (site) {
+              this.selectedSite = site;
+              this.breadcrumb = ['Sites', site.name];
+            }
+          } else if (view === 'heatmap') {
+            this.breadcrumb = ['Heatmap'];
+            setTimeout(() => this.renderHeatmap(), 100);
+          } else if (view === 'settings') {
+            this.breadcrumb = ['Réglages'];
+          }
+        },
+
+        // Chargement des données
+        async loadSites() {
+          try {
+            const response = await fetch('/api/sites');
+            const data = await response.json();
+            this.sites = data.sites || [];
+          } catch (error) {
+            console.error('Erreur chargement sites:', error);
+          }
+        },
+
+        async loadKPIs() {
+          try {
+            const response = await fetch('/api/kpis');
+            const data = await response.json();
+            this.kpis = {
+              sites: data.total_sites || 0,
+              devices: data.total_devices || 0,
+              online: data.online_devices || 0,
+              offline: data.offline_devices || 0
+            };
+          } catch (error) {
+            console.error('Erreur chargement KPIs:', error);
+          }
+        },
+
+        async loadInventory() {
+          try {
+            const response = await fetch('/api/inventory-hierarchy');
+            const data = await response.json();
+            this.hierarchyData = data.hierarchy || {};
+          } catch (error) {
+            console.error('Erreur chargement inventaire:', error);
+          }
+        },
+
+        // Gestion hiérarchie
+        toggleHierarchy(key) {
+          this.expandedItems[key] = !this.expandedItems[key];
+        },
+
+        toggleDeviceDetails(deviceId) {
+          this.expandedDevices[deviceId] = !this.expandedDevices[deviceId];
+        },
+
+        getSiteName(siteId) {
+          const site = this.sites.find(s => s.id == siteId);
+          return site ? site.name : `Site ${siteId}`;
+        },
+
+        // Mode Intervention
+        applyInterventionMode() {
+          // Le filtrage se fait automatiquement via :class dans le template
+          console.log('Mode Intervention:', this.interventionMode ? 'ACTIVÉ' : 'DÉSACTIVÉ');
+        },
+
+        // Heatmap
+        renderHeatmap() {
+          // Données simulées (à remplacer par API)
+          const series = [];
+          const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+          for (let day = 0; day < 7; day++) {
+            const data = [];
+            for (let hour = 0; hour < 24; hour++) {
+              data.push({
+                x: `${hour}h`,
+                y: Math.random() * 100 // Disponibilité en %
+              });
+            }
+            series.push({
+              name: days[day],
+              data: data
+            });
+          }
+
+          const options = {
+            series: series,
+            chart: {
+              height: 500,
+              type: 'heatmap',
+              toolbar: { show: false }
+            },
+            dataLabels: { enabled: false },
+            colors: ['#FF3B30'],
+            plotOptions: {
+              heatmap: {
+                colorScale: {
+                  ranges: [
+                    { from: 0, to: 50, color: '#FF3B30', name: 'Panne' },
+                    { from: 50, to: 90, color: '#FF9500', name: 'Instable' },
+                    { from: 90, to: 100, color: '#34C759', name: 'Opérationnel' }
+                  ]
+                }
+              }
+            },
+            xaxis: {
+              type: 'category'
+            },
+            title: {
+              text: 'Disponibilité par heure et par jour',
+              style: {
+                fontSize: '16px',
+                fontWeight: 700
+              }
+            }
+          };
+
+          const chart = new ApexCharts(document.querySelector("#heatmap"), options);
+          chart.render();
+        }
+      }
+    }
+  </script>
+
+</body>
+</html>

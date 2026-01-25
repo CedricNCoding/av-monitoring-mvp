@@ -1529,3 +1529,195 @@ def ui_device_detail(request: Request, device_id: int, db: Session = Depends(get
         "device_detail.html",
         {"request": request, "device": device_view, "metrics": m_view, "metrics_json": metrics_json},
     )
+
+
+# ------------------------------------------------------------
+# UI : Application SPA Moderne
+# ------------------------------------------------------------
+@app.get("/app", response_class=HTMLResponse)
+def ui_app(request: Request):
+    """Interface SPA moderne avec sidebar et mode intervention."""
+    return templates.TemplateResponse("app.html", {"request": request})
+
+
+# ------------------------------------------------------------
+# API : Endpoints pour l'interface SPA
+# ------------------------------------------------------------
+@app.get("/api/sites")
+def api_list_sites(db: Session = Depends(get_db)):
+    """Liste tous les sites avec leurs compteurs d'équipements."""
+    sites = db.query(Site).all()
+    result = []
+
+    for site in sites:
+        devices = db.query(Device).filter(Device.site_id == site.id).all()
+        result.append({
+            "id": site.id,
+            "name": site.name,
+            "device_count": len(devices),
+            "contact_name": site.contact_first_name and site.contact_last_name
+                           and f"{site.contact_first_name} {site.contact_last_name}" or None,
+            "contact_phone": site.contact_phone,
+            "address": getattr(site, 'address', None),
+            "notes": getattr(site, 'notes', None)
+        })
+
+    return {"sites": result}
+
+
+@app.get("/api/kpis")
+def api_kpis(db: Session = Depends(get_db)):
+    """KPIs globaux pour la vue d'ensemble."""
+    sites_count = db.query(Site).count()
+    devices = db.query(Device).all()
+
+    total_devices = len(devices)
+    online_count = sum(1 for d in devices if d.status == "online")
+    offline_count = sum(1 for d in devices if d.status == "offline")
+    unknown_count = sum(1 for d in devices if d.status not in ["online", "offline"])
+
+    return {
+        "total_sites": sites_count,
+        "total_devices": total_devices,
+        "online_devices": online_count,
+        "offline_devices": offline_count,
+        "unknown_devices": unknown_count
+    }
+
+
+@app.get("/api/inventory-hierarchy")
+def api_inventory_hierarchy(db: Session = Depends(get_db)):
+    """
+    Structure hiérarchique complète: Site > Bâtiment > Salle > Équipements.
+    Format: { siteId: { building: { room: [devices] } } }
+    """
+    devices = db.query(Device).all()
+    hierarchy = {}
+
+    for device in devices:
+        site_id = device.site_id
+        building = (device.building or "Non défini").strip()
+        room = (device.room or "Non défini").strip()
+
+        # Construire la hiérarchie
+        if site_id not in hierarchy:
+            hierarchy[site_id] = {}
+        if building not in hierarchy[site_id]:
+            hierarchy[site_id][building] = {}
+        if room not in hierarchy[site_id][building]:
+            hierarchy[site_id][building][room] = []
+
+        # Ajouter le device
+        metrics = _as_dict(device.metrics or {})
+        hierarchy[site_id][building][room].append({
+            "id": device.id,
+            "name": device.name,
+            "ip": device.ip,
+            "type": device.device_type,
+            "driver": device.driver,
+            "status": device.status,
+            "detail": device.detail,
+            "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+            "metrics": {
+                "uptime_human": _uptime_centis_to_human(metrics.get("sys_uptime")),
+                "sys_descr": metrics.get("sys_descr"),
+                "snmp_ok": metrics.get("snmp_ok")
+            }
+        })
+
+    return {"hierarchy": hierarchy}
+
+
+@app.get("/api/availability-heatmap")
+def api_availability_heatmap(
+    site_id: Optional[int] = None,
+    days: int = 7,
+    db: Session = Depends(get_db)
+):
+    """
+    Heatmap de disponibilité sur N jours (7 par défaut).
+    Retourne un tableau 7 jours × 24 heures avec le % de disponibilité.
+
+    Format: [
+        { day: "Lun", data: [{ hour: "0h", availability: 98.5 }, ...] },
+        ...
+    ]
+    """
+    cutoff = _now_utc() - timedelta(days=days)
+
+    # Récupérer tous les events sur la période
+    query = db.query(DeviceEvent).filter(DeviceEvent.created_at >= cutoff)
+    if site_id:
+        query = query.join(Device).filter(Device.site_id == site_id)
+
+    events = query.all()
+
+    # Grouper par jour et heure
+    heatmap_data = {}
+    for event in events:
+        day_of_week = event.created_at.weekday()  # 0=Lundi, 6=Dimanche
+        hour = event.created_at.hour
+
+        key = (day_of_week, hour)
+        if key not in heatmap_data:
+            heatmap_data[key] = {"total": 0, "online": 0}
+
+        heatmap_data[key]["total"] += 1
+        if event.status == "online":
+            heatmap_data[key]["online"] += 1
+
+    # Formater pour ApexCharts
+    day_names = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    result = []
+
+    for day_idx in range(7):
+        day_data = []
+        for hour in range(24):
+            key = (day_idx, hour)
+            if key in heatmap_data and heatmap_data[key]["total"] > 0:
+                availability = (heatmap_data[key]["online"] / heatmap_data[key]["total"]) * 100
+            else:
+                availability = 100  # Pas de données = considéré OK
+
+            day_data.append({
+                "x": f"{hour}h",
+                "y": round(availability, 1)
+            })
+
+        result.append({
+            "name": day_names[day_idx],
+            "data": day_data
+        })
+
+    return {"heatmap": result}
+
+
+@app.get("/api/site/{site_id}/intelligence")
+def api_site_intelligence(site_id: int, db: Session = Depends(get_db)):
+    """
+    Retourne les informations d'intelligence d'un site:
+    - Contact local
+    - Localisation
+    - Notes terrain
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    return {
+        "site_id": site.id,
+        "name": site.name,
+        "contact": {
+            "first_name": site.contact_first_name,
+            "last_name": site.contact_last_name,
+            "title": site.contact_title,
+            "email": site.contact_email,
+            "phone": site.contact_phone
+        },
+        "location": {
+            "address": getattr(site, 'address', None),
+            "latitude": getattr(site, 'latitude', None),
+            "longitude": getattr(site, 'longitude', None)
+        },
+        "notes": getattr(site, 'notes', None)
+    }
