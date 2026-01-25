@@ -1305,10 +1305,143 @@
 
         <!-- VUE : Settings -->
         <div x-show="currentView === 'settings'" class="fade-in">
-          <div class="card">
-            <div class="card-title">Réglages Système</div>
-            <p style="color: var(--text-muted);">Configuration à venir...</p>
+
+          <!-- Créer un nouveau site -->
+          <div class="card" style="margin-bottom: 24px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">➕ Créer un nouveau site</h2>
+
+            <!-- Message de succès avec token -->
+            <div x-show="newSiteToken" style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+              <div style="font-weight: 700; margin-bottom: 12px; color: var(--success);">✅ Site créé avec succès !</div>
+              <div style="margin-bottom: 8px;">
+                <strong>Nom :</strong> <span x-text="newSiteToken?.name"></span>
+              </div>
+              <div style="margin-bottom: 12px;">
+                <strong>Token :</strong>
+                <div style="background: white; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 4px;" x-text="newSiteToken?.token"></div>
+              </div>
+              <div style="color: var(--text-muted); font-size: 12px;">
+                ⚠️ Copiez ce token maintenant. Il ne sera plus affiché.
+              </div>
+              <button @click="newSiteToken = null" style="margin-top: 12px; padding: 8px 16px; background: var(--text-muted); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                Fermer
+              </button>
+            </div>
+
+            <form @submit.prevent="createSite" style="display: flex; gap: 12px; align-items: flex-end;">
+              <div style="flex: 1;">
+                <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-muted);">
+                  Nom du site
+                </label>
+                <input type="text" x-model="newSiteName" placeholder="ex : agence-lyon-01" required
+                       style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+              </div>
+              <button type="submit" style="padding: 10px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                Créer
+              </button>
+            </form>
           </div>
+
+          <!-- Liste des sites -->
+          <div class="card">
+            <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">🏢 Sites configurés</h2>
+
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border); background: #FAFAFA;">
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">ID</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Nom</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Token (partiel)</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Équipements</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="site in sites" :key="site.id">
+                    <tr style="border-bottom: 1px solid var(--border);">
+                      <td style="padding: 12px; font-family: monospace; color: var(--text-muted);" x-text="site.id"></td>
+                      <td style="padding: 12px; font-weight: 600;" x-text="site.name"></td>
+                      <td style="padding: 12px; font-family: monospace; font-size: 11px; color: var(--text-muted);" x-text="site.token ? site.token.substring(0, 12) + '...' + site.token.slice(-4) : '—'"></td>
+                      <td style="padding: 12px;" x-text="site.device_count || 0"></td>
+                      <td style="padding: 12px;">
+                        <button @click="regenerateToken(site)" style="padding: 6px 12px; background: var(--warning); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 8px;">
+                          🔄 Régénérer token
+                        </button>
+                        <button @click="confirmDeleteSite(site)" style="padding: 6px 12px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                          🗑️ Supprimer
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Modal de confirmation de suppression de site -->
+          <div x-show="deleteConfirmModal.show" @click.away="deleteConfirmModal.show = false"
+               style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+            <div @click.stop style="background: white; border-radius: 16px; padding: 32px; max-width: 500px; width: 90%;">
+              <h3 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 800; color: var(--danger);">⚠️ Supprimer le site</h3>
+
+              <p style="margin-bottom: 16px; color: var(--text-main);">
+                Vous êtes sur le point de supprimer le site <strong x-text="deleteConfirmModal.site?.name"></strong>.
+              </p>
+
+              <p style="margin-bottom: 16px; color: var(--text-muted); font-size: 13px;">
+                Cette action supprimera définitivement :
+              </p>
+              <ul style="margin-bottom: 20px; color: var(--text-muted); font-size: 13px; padding-left: 20px;">
+                <li>Le site et sa configuration</li>
+                <li>Tous les équipements (<strong x-text="deleteConfirmModal.site?.device_count || 0"></strong>)</li>
+                <li>Tout l'historique et les alertes</li>
+              </ul>
+
+              <p style="margin-bottom: 12px; font-weight: 600;">
+                Pour confirmer, retapez le nom du site :
+              </p>
+              <input type="text" x-model="deleteConfirmModal.confirmName" :placeholder="deleteConfirmModal.site?.name"
+                     style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+
+              <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button @click="deleteConfirmModal.show = false" style="padding: 10px 20px; background: var(--text-muted); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                  Annuler
+                </button>
+                <button @click="deleteSite()" :disabled="deleteConfirmModal.confirmName !== deleteConfirmModal.site?.name"
+                        :style="deleteConfirmModal.confirmName === deleteConfirmModal.site?.name ? 'opacity: 1; cursor: pointer;' : 'opacity: 0.5; cursor: not-allowed;'"
+                        style="padding: 10px 20px; background: var(--danger); color: white; border: none; border-radius: 8px; font-weight: 600;">
+                  Supprimer définitivement
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal de régénération de token -->
+          <div x-show="regenerateTokenModal.show" @click.away="regenerateTokenModal.show = false"
+               style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+            <div @click.stop style="background: white; border-radius: 16px; padding: 32px; max-width: 600px; width: 90%;">
+              <h3 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 800;">✅ Nouveau token généré</h3>
+
+              <p style="margin-bottom: 16px;">
+                Le token pour le site <strong x-text="regenerateTokenModal.siteName"></strong> a été régénéré.
+              </p>
+
+              <div style="background: #F5F5F7; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted);">Nouveau token :</div>
+                <div style="font-family: monospace; font-size: 11px; word-break: break-all; background: white; padding: 12px; border-radius: 6px;" x-text="regenerateTokenModal.token"></div>
+              </div>
+
+              <div style="color: var(--danger); font-size: 13px; margin-bottom: 20px; padding: 12px; background: #FEF2F2; border-radius: 8px; border: 1px solid #FEE2E2;">
+                ⚠️ <strong>Important :</strong> Copiez ce token maintenant. L'ancien token ne fonctionnera plus.
+              </div>
+
+              <button @click="regenerateTokenModal.show = false" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                Fermer
+              </button>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -1361,6 +1494,10 @@
         },
         editModal: { show: false, device: {} },
         detailModal: { show: false, device: {}, history: [], uptime: {}, loading: false },
+        deleteConfirmModal: { show: false, site: null, confirmName: '' },
+        regenerateTokenModal: { show: false, siteName: '', token: '' },
+        newSiteName: '',
+        newSiteToken: null,
         _chartInstance: null,
 
         async init() {
@@ -2017,6 +2154,86 @@
           } catch (error) {
             console.error('Erreur purge historique:', error);
             alert('Erreur lors de la suppression');
+          }
+        },
+
+        // Settings: Gestion des sites
+        async createSite() {
+          try {
+            if (!this.newSiteName.trim()) {
+              alert('Le nom du site est requis');
+              return;
+            }
+
+            const response = await fetch('/api/sites', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: this.newSiteName.trim() })
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              this.newSiteToken = {
+                name: data.name,
+                token: data.token
+              };
+              this.newSiteName = '';
+              await this.loadSites();
+            } else {
+              const error = await response.json();
+              alert(error.detail || 'Erreur lors de la création du site');
+            }
+          } catch (error) {
+            console.error('Erreur création site:', error);
+            alert('Erreur lors de la création du site');
+          }
+        },
+
+        confirmDeleteSite(site) {
+          this.deleteConfirmModal.site = site;
+          this.deleteConfirmModal.confirmName = '';
+          this.deleteConfirmModal.show = true;
+        },
+
+        async deleteSite() {
+          try {
+            const siteId = this.deleteConfirmModal.site.id;
+            const response = await fetch(`/api/sites/${siteId}`, { method: 'DELETE' });
+
+            if (response.ok) {
+              const data = await response.json();
+              alert(`✅ Site supprimé avec succès (${data.deleted_devices} équipements supprimés)`);
+              this.deleteConfirmModal.show = false;
+              await this.loadSites();
+            } else {
+              alert('Erreur lors de la suppression');
+            }
+          } catch (error) {
+            console.error('Erreur suppression site:', error);
+            alert('Erreur lors de la suppression');
+          }
+        },
+
+        async regenerateToken(site) {
+          if (!confirm(`Régénérer le token pour le site "${site.name}" ?\n\nL'ancien token ne fonctionnera plus.`)) {
+            return;
+          }
+
+          try {
+            const response = await fetch(`/api/sites/${site.id}/regenerate-token`, { method: 'POST' });
+
+            if (response.ok) {
+              const data = await response.json();
+              this.regenerateTokenModal.siteName = data.site_name;
+              this.regenerateTokenModal.token = data.token;
+              this.regenerateTokenModal.show = true;
+              await this.loadSites();
+            } else {
+              alert('Erreur lors de la régénération du token');
+            }
+          } catch (error) {
+            console.error('Erreur régénération token:', error);
+            alert('Erreur lors de la régénération du token');
           }
         }
       }

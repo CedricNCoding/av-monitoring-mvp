@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -1580,6 +1580,93 @@ def api_list_sites(db: Session = Depends(get_db)):
     return {"sites": result}
 
 
+@app.post("/api/sites")
+def api_create_site(
+    name: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    Crée un nouveau site et retourne ses informations avec le token.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Site name is required")
+
+    # Vérifier si le site existe déjà
+    existing = db.query(Site).filter(Site.name == name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Site already exists")
+
+    # Créer le site avec un token généré
+    token = secrets.token_urlsafe(32)
+    site = Site(name=name, token=token)
+    db.add(site)
+    db.commit()
+    db.refresh(site)
+
+    return {
+        "id": site.id,
+        "name": site.name,
+        "token": token,
+        "success": True
+    }
+
+
+@app.delete("/api/sites/{site_id}")
+def api_delete_site(
+    site_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Supprime un site et toutes ses données associées (devices, events, alerts).
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Récupérer tous les devices du site
+    devices = db.query(Device).filter(Device.site_id == site_id).all()
+    device_count = len(devices)
+
+    # Supprimer tous les events et alerts associés au site (par site_id et device_id)
+    db.query(DeviceEvent).filter(DeviceEvent.site_id == site_id).delete(synchronize_session=False)
+    db.query(DeviceAlert).filter(DeviceAlert.site_id == site_id).delete(synchronize_session=False)
+
+    # Supprimer tous les équipements du site
+    db.query(Device).filter(Device.site_id == site_id).delete(synchronize_session=False)
+
+    # Supprimer le site
+    db.delete(site)
+    db.commit()
+
+    return {"success": True, "deleted_devices": device_count}
+
+
+@app.post("/api/sites/{site_id}/regenerate-token")
+def api_regenerate_token(
+    site_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Régénère le token d'authentification d'un site.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Générer un nouveau token
+    new_token = secrets.token_urlsafe(32)
+    site.token = new_token
+    db.commit()
+
+    return {
+        "success": True,
+        "site_id": site.id,
+        "site_name": site.name,
+        "token": new_token
+    }
+
+
 @app.get("/api/kpis")
 def api_kpis(db: Session = Depends(get_db)):
     """KPIs globaux pour la vue d'ensemble."""
@@ -1922,12 +2009,19 @@ def api_delete_device(
     db: Session = Depends(get_db)
 ):
     """
-    Supprime un équipement.
+    Supprime un équipement et toutes ses données associées (events, alerts).
     """
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    # Supprimer les événements associés
+    db.query(DeviceEvent).filter(DeviceEvent.device_id == device_id).delete()
+
+    # Supprimer les alertes associées
+    db.query(DeviceAlert).filter(DeviceAlert.device_id == device_id).delete()
+
+    # Supprimer le device
     db.delete(device)
     db.commit()
     return {"success": True}
