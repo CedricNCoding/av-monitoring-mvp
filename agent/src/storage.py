@@ -384,6 +384,45 @@ def _normalize_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 # ------------------------------------------------------------
 # Public API
 # ------------------------------------------------------------
+def ensure_runtime_dir(config_path: str) -> None:
+    """
+    Ensure runtime directory exists and is writable.
+    Called at agent startup to fail fast if permissions are wrong.
+
+    Raises:
+        RuntimeError: If directory cannot be created or is not writable
+    """
+    parent_dir = os.path.dirname(config_path)
+
+    # Create directory if missing
+    try:
+        os.makedirs(parent_dir, mode=0o750, exist_ok=True)
+    except PermissionError as e:
+        raise RuntimeError(
+            f"Cannot create runtime directory {parent_dir}: {e}. "
+            f"Run as root or ensure parent directory is writable."
+        ) from e
+
+    # Check write access
+    if not os.access(parent_dir, os.W_OK):
+        import pwd
+        try:
+            dir_owner = pwd.getpwuid(os.stat(parent_dir).st_uid).pw_name
+        except:
+            dir_owner = "unknown"
+
+        current_user = os.getenv("USER", "current")
+
+        raise RuntimeError(
+            f"Runtime directory {parent_dir} is not writable.\n"
+            f"  Current user: {current_user}\n"
+            f"  Directory owner: {dir_owner}\n"
+            f"  Fix: sudo chown -R {current_user}:{current_user} {parent_dir}"
+        )
+
+    print(f"✓ Runtime directory OK: {parent_dir}")
+
+
 def load_config(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
         # deep copy safe
@@ -396,12 +435,42 @@ def load_config(path: str) -> Dict[str, Any]:
 
 
 def save_config(path: str, cfg: Dict[str, Any]) -> None:
+    """
+    Save config with atomic write + fsync.
+    Ensures parent directory exists and is writable.
+    """
     cfg = _normalize_config(cfg)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    # atomic-ish write (avoid corrupted json on power loss)
+    parent_dir = os.path.dirname(path)
+
+    # Ensure parent directory exists
+    os.makedirs(parent_dir, mode=0o750, exist_ok=True)
+
+    # Check write permissions BEFORE attempting write
+    if not os.access(parent_dir, os.W_OK):
+        raise PermissionError(
+            f"Cannot write to {parent_dir}. "
+            f"Check ownership (should be {os.getenv('USER', 'current user')}) "
+            f"and permissions (should be 750)."
+        )
+
+    # Atomic write with fsync
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())  # Force write to disk
 
-    os.replace(tmp_path, path)
+        os.replace(tmp_path, path)  # Atomic rename
+    except (PermissionError, OSError) as e:
+        # Clean up temp file if it exists
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+        raise RuntimeError(
+            f"Failed to save config to {path}: {e}. "
+            f"Ensure {parent_dir} is owned by the service user and has 750 permissions."
+        ) from e

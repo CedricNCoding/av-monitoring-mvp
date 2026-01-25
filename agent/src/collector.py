@@ -18,7 +18,7 @@ from src.scheduling import (
     device_policy_from_config,
 )
 
-CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
+CONFIG_PATH = os.getenv("AGENT_CONFIG", "/var/lib/avmonitoring/config.json")
 
 
 # -------------------------------------------------------------------

@@ -5,7 +5,9 @@
 PYTHONPATH=/opt/avmonitoring-agent
 
 # Configuration file path
-AGENT_CONFIG=/etc/avmonitoring/config.json
+# Runtime config is stored in /var/lib/avmonitoring (writable by service user)
+# /etc/avmonitoring contains only read-only templates owned by root
+AGENT_CONFIG=/var/lib/avmonitoring/config.json
 
 # Config sync interval (in minutes, default: 5)
 CONFIG_SYNC_INTERVAL_MIN=5

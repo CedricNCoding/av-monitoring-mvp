@@ -9,11 +9,23 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from src.storage import load_config, save_config
+from src.storage import load_config, save_config, ensure_runtime_dir
 from src.collector import run_forever, get_last_status, get_last_results
 from src.config_sync import start_sync_thread, get_sync_status
 
-CONFIG_PATH = os.getenv("AGENT_CONFIG", "/agent/config/config.json")
+# Determine config path with proper fallback
+CONFIG_PATH = os.getenv("AGENT_CONFIG", "/var/lib/avmonitoring/config.json")
+
+# Log config path for debugging
+print(f"🔧 Agent config path: {CONFIG_PATH}")
+
+# Ensure runtime directory exists and is writable (fail fast if not)
+try:
+    ensure_runtime_dir(CONFIG_PATH)
+except RuntimeError as e:
+    print(f"❌ FATAL: {e}")
+    import sys
+    sys.exit(1)
 
 app = FastAPI(title="AV Agent - Local Admin")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))

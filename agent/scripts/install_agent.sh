@@ -56,13 +56,15 @@ echo -e "${GREEN}✓${NC} Python $PYTHON_VERSION détecté"
 
 echo -e "${BLUE}[2/10]${NC} Création de l'utilisateur système..."
 
-# Créer utilisateur avmonitoring
+# Créer utilisateur avmonitoring SANS créer le home (-M au lieu de -m)
 if ! id "$AGENT_USER" &>/dev/null; then
-    useradd -r -s /bin/bash -d "$INSTALL_DIR" -m "$AGENT_USER"
+    useradd -r -s /bin/bash -d "$INSTALL_DIR" -M "$AGENT_USER"
     usermod -aG dialout "$AGENT_USER"  # Pour accès USB série (Zigbee)
     echo -e "${GREEN}✓${NC} Utilisateur $AGENT_USER créé"
 else
     echo -e "${YELLOW}⚠${NC} Utilisateur $AGENT_USER existe déjà"
+    # S'assurer qu'il est dans le groupe dialout
+    usermod -aG dialout "$AGENT_USER" 2>/dev/null || true
 fi
 
 echo -e "${BLUE}[3/10]${NC} Téléchargement du code..."
@@ -120,11 +122,27 @@ mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
 chown -R "$AGENT_USER:$AGENT_USER" "$DATA_DIR" "$LOG_DIR"
 echo -e "${GREEN}✓${NC} Répertoires créés"
 
-echo -e "${BLUE}[7/10]${NC} Configuration de la config initiale..."
+echo -e "${BLUE}[7/10]${NC} Migration et configuration initiale..."
 
-# Créer config.json si elle n'existe pas
-if [ ! -f "$CONFIG_DIR/config.json" ]; then
-    cat > "$CONFIG_DIR/config.json" <<'EOF'
+# Migration automatique depuis /etc si nécessaire
+if [ -f "$CONFIG_DIR/config.json" ]; then
+    echo -e "${YELLOW}⚠${NC} Config trouvée dans /etc/avmonitoring, migration vers /var/lib..."
+    if [ -f "$AGENT_DIR/scripts/migrate_config_to_var.sh" ]; then
+        bash "$AGENT_DIR/scripts/migrate_config_to_var.sh" || true
+    else
+        # Migration inline si le script n'existe pas
+        if [ ! -f "$DATA_DIR/config.json" ]; then
+            cp "$CONFIG_DIR/config.json" "$DATA_DIR/config.json"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            mv "$CONFIG_DIR/config.json" "$CONFIG_DIR/config.json.migrated.$TIMESTAMP"
+            echo -e "${GREEN}✓${NC} Config migrée vers $DATA_DIR/config.json"
+        fi
+    fi
+fi
+
+# Créer config.json dans /var/lib si elle n'existe pas
+if [ ! -f "$DATA_DIR/config.json" ]; then
+    cat > "$DATA_DIR/config.json" <<'EOF'
 {
   "site_name": "agent-default",
   "backend_url": "https://backend.avmonitoring.example.com",
@@ -133,12 +151,28 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
   "devices": []
 }
 EOF
-    chown "$AGENT_USER:$AGENT_USER" "$CONFIG_DIR/config.json"
-    chmod 600 "$CONFIG_DIR/config.json"
-    echo -e "${GREEN}✓${NC} Config créée: $CONFIG_DIR/config.json"
+    chown "$AGENT_USER:$AGENT_USER" "$DATA_DIR/config.json"
+    chmod 640 "$DATA_DIR/config.json"
+    echo -e "${GREEN}✓${NC} Config créée: $DATA_DIR/config.json"
     echo -e "${YELLOW}⚠${NC} IMPORTANT: Éditez la config avant de démarrer l'agent !"
 else
-    echo -e "${YELLOW}⚠${NC} Config existe déjà, conservation"
+    echo -e "${YELLOW}⚠${NC} Config existe déjà dans $DATA_DIR, conservation"
+fi
+
+# Créer template en lecture seule dans /etc pour référence
+if [ ! -f "$CONFIG_DIR/config.json.template" ]; then
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_DIR/config.json.template" <<'EOF'
+{
+  "site_name": "agent-default",
+  "backend_url": "https://backend.avmonitoring.example.com",
+  "backend_token": "CHANGE_ME",
+  "poll_interval_sec": 300,
+  "devices": []
+}
+EOF
+    chmod 644 "$CONFIG_DIR/config.json.template"
+    echo -e "${GREEN}✓${NC} Template créé: $CONFIG_DIR/config.json.template"
 fi
 
 echo -e "${BLUE}[8/10]${NC} Installation du service systemd..."
