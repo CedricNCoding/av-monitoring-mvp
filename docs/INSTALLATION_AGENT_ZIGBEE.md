@@ -40,9 +40,65 @@ Ce guide décrit l'installation complète d'un agent AV Monitoring avec support 
 
 ---
 
-## 📦 Étape 1 : Installation de Base
+## ⚡ Installation Rapide (Recommandé)
 
-### 1.1 Préparer le Système
+### Méthode Automatique avec Script
+
+Pour une installation en une seule commande :
+
+```bash
+# Se connecter en SSH à la machine cible
+ssh user@agent-host
+
+# Passer root
+sudo -i
+
+# Télécharger et exécuter le script d'installation
+curl -sSL https://raw.githubusercontent.com/CedricNCoding/av-monitoring-mvp/main/agent/scripts/install_agent.sh | bash
+```
+
+**Le script va automatiquement :**
+- ✅ Vérifier les prérequis (OS, Python 3.10+)
+- ✅ Créer l'utilisateur `avmonitoring`
+- ✅ Cloner le dépôt Git
+- ✅ Créer le venv et installer les dépendances Python
+- ✅ Créer les répertoires système
+- ✅ Installer le service systemd
+- ✅ Créer une configuration par défaut
+
+**Après l'installation automatique :**
+
+```bash
+# 1. Éditer la configuration
+nano /etc/avmonitoring/config.json
+# Modifiez : site_name, backend_url, backend_token
+
+# 2. Démarrer le service
+systemctl start avmonitoring-agent
+
+# 3. Vérifier le status
+systemctl status avmonitoring-agent
+
+# 4. Accéder à l'UI
+# http://<ip-agent>:8080
+```
+
+**Pour installer la stack Zigbee (optionnel) :**
+
+```bash
+cd /opt/avmonitoring-agent/agent/scripts
+./install_zigbee_stack.sh
+```
+
+---
+
+## 📦 Installation Manuelle (Détaillée)
+
+Si vous préférez une installation pas-à-pas ou souhaitez comprendre chaque étape :
+
+### Étape 1 : Installation de Base
+
+### 1.1 Préparer le Système (Manuel)
 
 ```bash
 # Se connecter en SSH à la machine cible
@@ -142,7 +198,7 @@ chmod 600 /etc/avmonitoring/config.json
 cp /opt/avmonitoring-agent/agent/packaging/default/avmonitoring-agent /etc/default/avmonitoring-agent
 
 # Copier le service systemd
-cp /opt/avmonitoring-agent/agent/packaging/avmonitoring-agent.service /etc/systemd/system/
+cp /opt/avmonitoring-agent/agent/packaging/systemd/avmonitoring-agent.service /etc/systemd/system/
 
 # Recharger systemd
 systemctl daemon-reload
