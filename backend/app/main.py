@@ -1558,8 +1558,10 @@ def api_list_sites(db: Session = Depends(get_db)):
             "contact_name": site.contact_first_name and site.contact_last_name
                            and f"{site.contact_first_name} {site.contact_last_name}" or None,
             "contact_phone": site.contact_phone,
-            "address": getattr(site, 'address', None),
-            "notes": getattr(site, 'notes', None)
+            "address": site.address,
+            "latitude": site.latitude,
+            "longitude": site.longitude,
+            "notes": None  # TODO: Ajouter colonne 'notes' au modèle Site si besoin
         })
 
     return {"sites": result}
@@ -1715,9 +1717,9 @@ def api_site_intelligence(site_id: int, db: Session = Depends(get_db)):
             "phone": site.contact_phone
         },
         "location": {
-            "address": getattr(site, 'address', None),
-            "latitude": getattr(site, 'latitude', None),
-            "longitude": getattr(site, 'longitude', None)
+            "address": site.address,
+            "latitude": site.latitude,
+            "longitude": site.longitude
         },
-        "notes": getattr(site, 'notes', None)
+        "notes": None  # TODO: Ajouter colonne 'notes' au modèle Site si besoin
     }
