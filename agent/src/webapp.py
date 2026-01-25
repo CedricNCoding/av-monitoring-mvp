@@ -491,6 +491,39 @@ def trigger_sync():
 
 
 # ---------------------------------------------------------------------
+# Endpoint MQTT Health
+# ---------------------------------------------------------------------
+@app.get("/mqtt/health")
+def mqtt_health():
+    """
+    Retourne l'état de santé de la connexion MQTT.
+
+    Returns:
+        JSON avec:
+        - configured: bool (env vars présentes)
+        - connected: bool (actuellement connecté)
+        - last_connect_ts: float|None (timestamp dernière connexion réussie)
+        - last_error: str|None (dernière erreur rencontrée)
+        - last_message_ts: float|None (timestamp dernier message reçu)
+        - devices_in_cache: int (nombre de devices en cache)
+    """
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+        return mqtt.get_health()
+    except Exception as e:
+        return {
+            "configured": False,
+            "connected": False,
+            "last_connect_ts": None,
+            "last_error": f"Failed to get MQTT health: {e}",
+            "last_message_ts": None,
+            "devices_in_cache": 0,
+            "mqtt_available": False
+        }
+
+
+# ---------------------------------------------------------------------
 # Endpoints Zigbee
 # ---------------------------------------------------------------------
 @app.post("/zigbee/permit_join")
@@ -644,6 +677,14 @@ def startup_event():
         print("✅ Collector started successfully")
     else:
         print("⚠️  Collector failed to start (check configuration)")
+
+    # Initialiser connexion MQTT (non-bloquant)
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+        mqtt.init_connection()
+    except Exception as e:
+        print(f"⚠️  MQTT initialization failed: {e}")
 
 
 @app.on_event("shutdown")

@@ -48,6 +48,8 @@ class MQTTClientManager:
         if not MQTT_AVAILABLE:
             self._client = None
             self._connected = False
+            self._configured = False
+            self._last_error = "paho-mqtt not installed"
             return
 
         self._client: Optional[mqtt.Client] = None
@@ -60,9 +62,45 @@ class MQTTClientManager:
         self._stop_flag = False
         self._connection_attempted = False
         self._last_message_time: Optional[float] = None
+        self._last_connect_ts: Optional[float] = None
+        self._last_error: Optional[str] = None
+        self._configured = False  # True si env vars présentes
 
-        # Lazy initialization (connecte au premier appel probe())
-        # Ne pas connecter ici pour éviter erreur si env vars absentes
+        # Check configuration at init (don't connect yet)
+        self._check_configuration()
+
+    def _check_configuration(self):
+        """
+        Vérifie si les variables d'environnement MQTT sont présentes.
+        Log la configuration sans connecter.
+        """
+        host = os.getenv("AVMVP_MQTT_HOST")
+        port = os.getenv("AVMVP_MQTT_PORT")
+        user = os.getenv("AVMVP_MQTT_USER")
+        password = os.getenv("AVMVP_MQTT_PASS")
+        ca_path = os.getenv("AVMVP_MQTT_TLS_CA")
+        base_topic = os.getenv("AVMVP_MQTT_BASE_TOPIC", "zigbee2mqtt")
+
+        if not user or not password:
+            print("MQTT configured: no (missing AVMVP_MQTT_USER or AVMVP_MQTT_PASS)")
+            self._configured = False
+            self._last_error = "Missing credentials (AVMVP_MQTT_USER or AVMVP_MQTT_PASS)"
+            return
+
+        if not ca_path or not os.path.exists(ca_path):
+            print(f"MQTT configured: no (CA certificate not found: {ca_path})")
+            self._configured = False
+            self._last_error = f"CA certificate not found: {ca_path}"
+            return
+
+        # Configuration valide
+        self._configured = True
+        print("MQTT configured: yes")
+        print(f"  Host: {host or 'localhost'}:{port or '8883'}")
+        print(f"  User: {user}")
+        print(f"  Base topic: {base_topic}")
+        print(f"  CA cert: {ca_path}")
+        print("  (Connection will be attempted on first use or via init_connection())")
 
     @classmethod
     def get_instance(cls) -> MQTTClientManager:
@@ -162,12 +200,16 @@ class MQTTClientManager:
             self._thread.start()
 
             print(f"MQTT: Connecting to {host}:{port} (TLS)...")
+            self._last_connect_ts = time.time()
+            self._last_error = None  # Clear previous errors
             return True
 
         except Exception as e:
-            print(f"MQTT: Connection failed: {e}")
+            error_msg = f"Connection failed: {e}"
+            print(f"MQTT: {error_msg}")
             self._connected = False
             self._client = None
+            self._last_error = error_msg
             return False
 
     def _loop(self):
@@ -198,7 +240,9 @@ class MQTTClientManager:
         if rc == 0:
             self._connected = True
             self._reconnect_delay = 5  # Reset backoff
-            print(f"MQTT: Connected successfully")
+            self._last_connect_ts = time.time()
+            self._last_error = None
+            print("MQTT connect OK")
 
             # Subscribe à tous les topics Zigbee2MQTT
             client.subscribe(f"{self._base_topic}/#")
@@ -212,6 +256,7 @@ class MQTTClientManager:
                 4: "Connection refused - bad username or password",
                 5: "Connection refused - not authorized"
             }.get(rc, f"Connection refused - code {rc}")
+            self._last_error = error_msg
             print(f"MQTT: {error_msg}")
 
     def _on_message(self, client, userdata, msg):
@@ -489,6 +534,55 @@ class MQTTClientManager:
             float: timestamp Unix, ou None si aucun message reçu
         """
         return self._last_message_time
+
+    def init_connection(self) -> bool:
+        """
+        Initialise la connexion MQTT de manière non-bloquante.
+
+        Utilisé au démarrage de l'application pour tenter de se connecter
+        immédiatement (au lieu d'attendre le premier probe()).
+
+        Returns:
+            bool: True si connexion démarrée (pas forcément connecté yet)
+        """
+        if not self._configured:
+            print("MQTT: Not configured, skipping connection")
+            return False
+
+        if self._connected:
+            print("MQTT: Already connected")
+            return True
+
+        if self._connection_attempted:
+            print("MQTT: Connection already attempted (check logs for errors)")
+            return False
+
+        print("MQTT: Initiating connection at startup...")
+        return self.connect()
+
+    def get_health(self) -> Dict[str, Any]:
+        """
+        Retourne l'état de santé MQTT pour monitoring.
+
+        Returns:
+            Dict avec:
+            - configured: bool (env vars présentes)
+            - connected: bool (actuellement connecté)
+            - last_connect_ts: float|None (timestamp dernière connexion réussie)
+            - last_error: str|None (dernière erreur rencontrée)
+            - last_message_ts: float|None (timestamp dernier message reçu)
+            - devices_in_cache: int (nombre de devices en cache)
+        """
+        with self._lock:
+            return {
+                "configured": self._configured,
+                "connected": self._connected,
+                "last_connect_ts": self._last_connect_ts,
+                "last_error": self._last_error,
+                "last_message_ts": self._last_message_time,
+                "devices_in_cache": len(self._state_cache),
+                "mqtt_available": MQTT_AVAILABLE
+            }
 
     def stop(self):
         """

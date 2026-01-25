@@ -1,0 +1,13 @@
+Pourquoi `-v -d` et `tls_version tlsv1.2` sont critiques :
+
+1. Validation avec `-v -d` (pas juste `-v`) :
+   - `mosquitto -c config -v` retourne RC=0 même si tls_version est absent → faux positif
+   - `mosquitto -c config -v -d` teste la configuration complète TLS/listeners → RC=1 si erreur
+   - Résultat : détection immédiate des erreurs avant démarrage du service
+
+2. Directive `tls_version tlsv1.2` obligatoire :
+   - Mosquitto 2.x requiert explicitement cette directive pour les listeners TLS
+   - Si absente : service démarre MAIS rejette toutes connexions TLS (handshake fail)
+   - Symptômes : clients bloquent, logs "protocol version error", impossible de se connecter
+
+Le script garantit maintenant : validation robuste avec `-v -d`, tls_version toujours présent, diagnostics complets (zigbee.conf + logs) si échec.

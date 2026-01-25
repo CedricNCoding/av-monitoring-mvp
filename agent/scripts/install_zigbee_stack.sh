@@ -9,6 +9,7 @@ set -e  # Exit on error
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "=========================================="
@@ -246,6 +247,41 @@ repair_mosquitto_config() {
     fi
 }
 
+# Fonction de diagnostic Mosquitto en cas d'échec
+mosquitto_diagnostics() {
+    echo ""
+    echo "=========================================="
+    echo "  Diagnostic Mosquitto"
+    echo "=========================================="
+    echo ""
+
+    echo "[1/5] Contenu /etc/mosquitto/conf.d/zigbee.conf (120 premières lignes):"
+    if [ -f /etc/mosquitto/conf.d/zigbee.conf ]; then
+        nl -ba /etc/mosquitto/conf.d/zigbee.conf | sed -n '1,120p'
+    else
+        echo "  zigbee.conf absent"
+    fi
+    echo ""
+
+    echo "[2/5] Logs récents du service (120 lignes):"
+    journalctl -u mosquitto -n 120 --no-pager -o cat 2>/dev/null || echo "  Logs non disponibles"
+    echo ""
+
+    echo "[3/5] Fichiers de configuration:"
+    ls -la /etc/mosquitto /etc/mosquitto/conf.d 2>/dev/null || echo "  Dossiers non accessibles"
+    echo ""
+
+    echo "[4/5] Permissions fichiers critiques:"
+    [ -f /etc/mosquitto/passwd ] && ls -l /etc/mosquitto/passwd || echo "  passwd: absent"
+    [ -f /etc/mosquitto/acl.conf ] && ls -l /etc/mosquitto/acl.conf || echo "  acl.conf: absent"
+    echo ""
+
+    echo "[5/5] Directives clés détectées:"
+    grep -Rni "^listener\|^include_dir\|^allow_anonymous\|^password_file\|^acl_file\|^persistence[^_]\|^persistence_location\|^tls_version" /etc/mosquitto/ 2>/dev/null | head -n 30 || echo "  Aucune directive trouvée"
+    echo ""
+    echo "=========================================="
+}
+
 configure_mosquitto() {
     echo "Configuration de Mosquitto..."
 
@@ -335,11 +371,21 @@ EOF
 
     # Validation de la configuration Mosquitto (avant toute création de users)
     echo "Validation de la configuration Mosquitto..."
-    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1)
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}✗ Erreur: Configuration Mosquitto invalide${NC}"
-        echo "Détails complets:"
-        echo "$VALIDATION_OUTPUT" | head -n 20
+
+    # Désactiver temporairement set -e pour capturer proprement l'erreur
+    # IMPORTANT: utiliser -v -d (verbose + daemonize test) pour validation complète TLS
+    set +e
+    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v -d 2>&1)
+    VALIDATION_RC=$?
+    set -e
+
+    if [ $VALIDATION_RC -ne 0 ]; then
+        echo -e "${RED}✗ Erreur: Configuration Mosquitto invalide (RC=$VALIDATION_RC)${NC}"
+        echo ""
+        echo "Sortie complète mosquitto -v -d:"
+        echo "$VALIDATION_OUTPUT"
+        echo ""
+        mosquitto_diagnostics
         exit 1
     fi
     echo -e "${GREEN}✓${NC} Configuration Mosquitto valide"
@@ -351,18 +397,26 @@ EOF
 
     echo "Configuration des utilisateurs MQTT..."
 
-    # Créer password_file si absent
+    # Créer password_file si absent ou vide (0 octet)
+    PASSWD_EMPTY=false
     if [ ! -f /etc/mosquitto/passwd ]; then
         touch /etc/mosquitto/passwd
+        PASSWD_EMPTY=true
         echo -e "${GREEN}✓${NC} Fichier password créé"
+    elif [ ! -s /etc/mosquitto/passwd ]; then
+        # Fichier existe mais vide (0 octet) → recréer users
+        PASSWD_EMPTY=true
+        echo -e "${YELLOW}⚠${NC} Fichier password vide détecté, recréation des users..."
+    else
+        echo -e "${GREEN}✓${NC} Fichier password existe et contient des données"
     fi
 
-    # Permissions password_file : root:mosquitto 0640 (DSI-friendly)
+    # Permissions password_file : root:root 0640 (évite warnings futures versions Mosquitto)
     # Justification :
-    # - root:mosquitto → seul root peut modifier, mosquitto peut lire
-    # - 0640 → lecture/écriture root, lecture groupe mosquitto, rien pour others
-    # - Conforme principe moindre privilège
-    chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+    # - root:root → seul root peut modifier, mosquitto lit via capabilities systemd
+    # - 0640 → lecture/écriture root, lecture groupe, rien pour others
+    # - Évite warnings sur ownership dans Mosquitto 2.x+
+    chown root:root /etc/mosquitto/passwd
     chmod 640 /etc/mosquitto/passwd
 
     # Gestion idempotente des credentials
@@ -384,16 +438,16 @@ EOF
 
     # Vérifier si users existent déjà
     USER_EXISTS=false
-    if grep -q "^admin:" /etc/mosquitto/passwd 2>/dev/null; then
+    if [ "$PASSWD_EMPTY" = false ] && grep -q "^admin:" /etc/mosquitto/passwd 2>/dev/null; then
         USER_EXISTS=true
         echo "Users MQTT déjà présents, mise à jour si nécessaire..."
     else
         echo "Création des users MQTT..."
     fi
 
-    # Mise à jour/création users (sans -c pour ne pas écraser)
+    # Mise à jour/création users (sans -c pour ne pas écraser, sauf si vide)
     if [ "$USER_EXISTS" = false ]; then
-        # Première création : utiliser -c uniquement pour le premier user
+        # Première création ou fichier vide : utiliser -c uniquement pour le premier user
         mosquitto_passwd -c -b /etc/mosquitto/passwd admin "$MQTT_PASS_ADMIN"
         mosquitto_passwd -b /etc/mosquitto/passwd zigbee2mqtt "$MQTT_PASS_Z2M"
         mosquitto_passwd -b /etc/mosquitto/passwd avmonitoring "$MQTT_PASS_AGENT"
@@ -405,7 +459,8 @@ EOF
     fi
 
     # Réappliquer permissions après modification (mosquitto_passwd peut les changer)
-    chown root:mosquitto /etc/mosquitto/passwd 2>/dev/null || chown root:root /etc/mosquitto/passwd
+    # IMPORTANT: root:root pour éviter warnings Mosquitto 2.x+
+    chown root:root /etc/mosquitto/passwd
     chmod 640 /etc/mosquitto/passwd
 
     # Sauvegarder les credentials (root-only, 0600)
@@ -426,11 +481,21 @@ EOF
     # ========================================================================
 
     echo "Validation finale configuration Mosquitto..."
-    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v 2>&1)
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}✗ Erreur: Configuration invalide après ajout users${NC}"
-        echo "Détails complets:"
-        echo "$VALIDATION_OUTPUT" | head -n 30
+
+    # Désactiver temporairement set -e pour capturer proprement l'erreur
+    # IMPORTANT: utiliser -v -d (verbose + daemonize test) pour validation complète TLS
+    set +e
+    VALIDATION_OUTPUT=$(mosquitto -c /etc/mosquitto/mosquitto.conf -v -d 2>&1)
+    VALIDATION_RC=$?
+    set -e
+
+    if [ $VALIDATION_RC -ne 0 ]; then
+        echo -e "${RED}✗ Erreur: Configuration invalide après ajout users (RC=$VALIDATION_RC)${NC}"
+        echo ""
+        echo "Sortie complète mosquitto -v -d:"
+        echo "$VALIDATION_OUTPUT"
+        echo ""
+        mosquitto_diagnostics
         exit 1
     fi
     echo -e "${GREEN}✓${NC} Configuration finale valide"
