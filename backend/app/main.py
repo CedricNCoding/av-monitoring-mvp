@@ -1723,3 +1723,198 @@ def api_site_intelligence(site_id: int, db: Session = Depends(get_db)):
         },
         "notes": None  # TODO: Ajouter colonne 'notes' au modèle Site si besoin
     }
+
+
+@app.get("/api/sites/{site_id}/devices")
+def api_get_site_devices(site_id: int, db: Session = Depends(get_db)):
+    """
+    Retourne tous les devices d'un site avec leurs informations complètes.
+    """
+    devices = db.query(Device).filter(Device.site_id == site_id).all()
+
+    result = []
+    for device in devices:
+        metrics = device.metrics or {}
+        result.append({
+            "id": device.id,
+            "name": device.name,
+            "ip": device.ip,
+            "type": device.device_type,
+            "driver": device.driver,
+            "building": device.building,
+            "floor": device.floor,
+            "room": device.room,
+            "status": device.status,
+            "verdict": device.verdict,
+            "detail": device.detail,
+            "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+            "metrics": {
+                "uptime_human": _uptime_centis_to_human(metrics.get("sys_uptime")),
+                "sys_descr": metrics.get("sys_descr"),
+                "snmp_ok": metrics.get("snmp_ok")
+            }
+        })
+
+    return {"devices": result}
+
+
+@app.put("/api/sites/{site_id}/contact")
+def api_update_site_contact(
+    site_id: int,
+    contact: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Met à jour les informations de contact d'un site.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    site.contact_first_name = contact.get("first_name", "").strip()
+    site.contact_last_name = contact.get("last_name", "").strip()
+    site.contact_email = contact.get("email", "").strip()
+    site.contact_phone = contact.get("phone", "").strip()
+
+    db.commit()
+    return {"success": True}
+
+
+@app.put("/api/sites/{site_id}/reporting")
+def api_update_site_reporting(
+    site_id: int,
+    reporting: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Met à jour les intervalles de reporting d'un site.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    ok_interval = reporting.get("ok_interval_s")
+    ko_interval = reporting.get("ko_interval_s")
+
+    if ok_interval is not None:
+        site.ok_interval_s = int(ok_interval)
+    if ko_interval is not None:
+        site.ko_interval_s = int(ko_interval)
+
+    db.commit()
+    return {"success": True}
+
+
+@app.put("/api/sites/{site_id}/location")
+def api_update_site_location(
+    site_id: int,
+    location: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Met à jour la localisation d'un site.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    site.address = location.get("address", "").strip()
+    site.latitude = location.get("latitude", "").strip()
+    site.longitude = location.get("longitude", "").strip()
+
+    db.commit()
+    return {"success": True}
+
+
+@app.post("/api/sites/{site_id}/devices")
+def api_add_device(
+    site_id: int,
+    device_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Ajoute un nouvel équipement à un site.
+    """
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    # Vérifier si IP existe déjà pour ce site
+    existing = db.query(Device).filter(
+        Device.site_id == site_id,
+        Device.ip == device_data.get("ip")
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="IP already exists for this site")
+
+    new_device = Device(
+        site_id=site_id,
+        name=device_data.get("name", "").strip(),
+        ip=device_data.get("ip", "").strip(),
+        device_type=device_data.get("type", "unknown").strip(),
+        driver=device_data.get("driver", "ping").strip(),
+        building=device_data.get("building", "").strip(),
+        floor=device_data.get("floor", "").strip(),
+        room=device_data.get("room", "").strip(),
+        status="unknown",
+        driver_config={},
+        expectations={},
+        metrics={}
+    )
+
+    db.add(new_device)
+    db.commit()
+    db.refresh(new_device)
+
+    return {"success": True, "device_id": new_device.id}
+
+
+@app.put("/api/devices/{device_id}")
+def api_update_device(
+    device_id: int,
+    device_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Met à jour un équipement existant.
+    """
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    # Mettre à jour les champs modifiables
+    if "name" in device_data:
+        device.name = device_data["name"].strip()
+    if "ip" in device_data:
+        device.ip = device_data["ip"].strip()
+    if "type" in device_data:
+        device.device_type = device_data["type"].strip()
+    if "driver" in device_data:
+        device.driver = device_data["driver"].strip()
+    if "building" in device_data:
+        device.building = device_data["building"].strip()
+    if "floor" in device_data:
+        device.floor = device_data["floor"].strip()
+    if "room" in device_data:
+        device.room = device_data["room"].strip()
+
+    db.commit()
+    return {"success": True}
+
+
+@app.delete("/api/devices/{device_id}")
+def api_delete_device(
+    device_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Supprime un équipement.
+    """
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    db.delete(device)
+    db.commit()
+    return {"success": True}

@@ -5,11 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AV Monitoring — Operations Center</title>
 
-  <!-- Alpine.js pour la réactivité -->
+  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-  <!-- ApexCharts pour heatmaps -->
+  <!-- ApexCharts -->
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <!-- Leaflet pour la carte -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
     * {
@@ -40,7 +44,6 @@
       height: 100vh;
     }
 
-    /* Layout Principal : Sidebar + Contenu */
     .app-container {
       display: flex;
       height: 100vh;
@@ -56,6 +59,7 @@
       padding: 24px 0;
       box-shadow: 4px 0 12px var(--shadow);
       z-index: 100;
+      overflow-y: auto;
     }
 
     .sidebar-logo {
@@ -79,7 +83,6 @@
     .sidebar-nav {
       flex: 1;
       padding: 0 12px;
-      overflow-y: auto;
     }
 
     .nav-item {
@@ -129,7 +132,6 @@
       overflow: hidden;
     }
 
-    /* Topbar avec fil d'Ariane */
     .topbar {
       background: var(--bg-sidebar);
       border-bottom: 1px solid var(--border);
@@ -155,10 +157,6 @@
       font-weight: 500;
     }
 
-    .breadcrumb a:hover {
-      text-decoration: underline;
-    }
-
     .breadcrumb .separator {
       color: var(--text-muted);
     }
@@ -168,7 +166,6 @@
       font-weight: 600;
     }
 
-    /* Commutateur Mode Intervention */
     .intervention-toggle {
       display: flex;
       align-items: center;
@@ -226,14 +223,12 @@
       transform: translateX(20px);
     }
 
-    /* Zone de travail scrollable */
     .workspace {
       flex: 1;
       overflow-y: auto;
       padding: 32px;
     }
 
-    /* Cards */
     .card {
       background: white;
       border-radius: 12px;
@@ -248,7 +243,7 @@
       margin-bottom: 16px;
     }
 
-    /* Accordéons Hiérarchiques */
+    /* Hiérarchie */
     .hierarchy {
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -315,7 +310,6 @@
       max-height: 5000px;
     }
 
-    /* Device Row */
     .device-row {
       display: flex;
       align-items: center;
@@ -372,7 +366,27 @@
       color: #6B7280;
     }
 
-    /* Device Details (Inline Accordion) */
+    /* Verdict badges */
+    .device-status.ok {
+      background: #D1FAE5;
+      color: #065F46;
+    }
+
+    .device-status.fault {
+      background: #FEE2E2;
+      color: #991B1B;
+    }
+
+    .device-status.expected_off {
+      background: #F3F4F6;
+      color: #6B7280;
+    }
+
+    .device-status.doubt {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+
     .device-details {
       max-height: 0;
       overflow: hidden;
@@ -422,7 +436,6 @@
       color: var(--text-main);
     }
 
-    /* Bandeau Intelligence Site */
     .site-intel {
       background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
       color: white;
@@ -475,7 +488,6 @@
       line-height: 1.5;
     }
 
-    /* Heatmap Container */
     .heatmap-container {
       background: white;
       border-radius: 12px;
@@ -483,7 +495,6 @@
       box-shadow: 0 2px 8px var(--shadow);
     }
 
-    /* KPIs */
     .kpis {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -513,7 +524,12 @@
       letter-spacing: -0.03em;
     }
 
-    /* Utilities */
+    #map {
+      height: 500px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
     .hidden {
       display: none !important;
     }
@@ -536,10 +552,9 @@
 </head>
 <body>
 
-  <!-- Application Alpine.js -->
   <div x-data="app()" class="app-container">
 
-    <!-- === SIDEBAR === -->
+    <!-- SIDEBAR -->
     <div class="sidebar">
       <div class="sidebar-logo">
         <h1>AV Monitoring</h1>
@@ -555,16 +570,16 @@
           <span>Vue d'ensemble</span>
         </a>
 
+        <a href="#" @click.prevent="navigateTo('map')"
+           class="nav-item" :class="{ 'active': currentView === 'map' }">
+          <span class="icon">🗺️</span>
+          <span>Carte</span>
+        </a>
+
         <a href="#" @click.prevent="navigateTo('inventory')"
            class="nav-item" :class="{ 'active': currentView === 'inventory' }">
           <span class="icon">📦</span>
           <span>Inventaire</span>
-        </a>
-
-        <a href="#" @click.prevent="navigateTo('heatmap')"
-           class="nav-item" :class="{ 'active': currentView === 'heatmap' }">
-          <span class="icon">📊</span>
-          <span>Heatmap 7J</span>
         </a>
 
         <div class="nav-section">Sites</div>
@@ -587,10 +602,10 @@
       </nav>
     </div>
 
-    <!-- === MAIN CONTENT === -->
+    <!-- MAIN CONTENT -->
     <div class="main-content">
 
-      <!-- Topbar avec fil d'Ariane -->
+      <!-- Topbar -->
       <div class="topbar">
         <div class="breadcrumb">
           <a href="#" @click.prevent="navigateTo('overview')">Accueil</a>
@@ -598,22 +613,17 @@
             <template x-for="(crumb, index) in breadcrumb" :key="index">
               <span>
                 <span class="separator">›</span>
-                <template x-if="index === breadcrumb.length - 1">
-                  <span class="current" x-text="crumb"></span>
-                </template>
-                <template x-if="index < breadcrumb.length - 1">
-                  <a href="#" x-text="crumb"></a>
-                </template>
+                <span class="current" x-text="crumb"></span>
               </span>
             </template>
           </template>
         </div>
 
-        <!-- Commutateur Mode Intervention -->
+        <!-- Mode Intervention -->
         <div class="intervention-toggle" x-show="currentView === 'inventory' || currentView === 'site'">
           <label>Mode Intervention</label>
           <label class="switch">
-            <input type="checkbox" x-model="interventionMode" @change="applyInterventionMode()">
+            <input type="checkbox" x-model="interventionMode">
             <span class="slider"></span>
           </label>
         </div>
@@ -651,9 +661,17 @@
                   <div class="device-name" x-text="site.name"></div>
                   <div class="device-ip" x-text="`${site.device_count} équipements`"></div>
                 </div>
-                <div class="device-status online" x-text="'→ Ouvrir'"></div>
+                <div class="device-status online">→ Ouvrir</div>
               </div>
             </template>
+          </div>
+        </div>
+
+        <!-- VUE : Carte -->
+        <div x-show="currentView === 'map'" class="fade-in">
+          <div class="card">
+            <div class="card-title">📍 Carte des sites</div>
+            <div id="map"></div>
           </div>
         </div>
 
@@ -685,7 +703,9 @@
                             <div class="hierarchy-content" :class="{ 'expanded': expandedItems[`room-${siteId}-${buildingName}-${roomName}`] }">
                               <template x-for="device in devices" :key="device.id">
                                 <div>
-                                  <div class="device-row" @click="toggleDeviceDetails(device.id)" :class="{ 'hidden': interventionMode && device.status === 'online' }">
+                                  <div class="device-row"
+                                       @click="toggleDeviceDetails(device.id)"
+                                       :class="{ 'hidden': interventionMode && device.status === 'online' }">
                                     <div class="device-info">
                                       <div class="device-name" x-text="device.name"></div>
                                       <div class="device-ip" x-text="device.ip"></div>
@@ -695,7 +715,7 @@
                                   <div class="device-details" :class="{ 'expanded': expandedDevices[device.id] }">
                                     <div class="device-details-content">
                                       <div class="detail-group">
-                                        <h4>Informations Générales</h4>
+                                        <h4>Informations</h4>
                                         <div class="detail-row">
                                           <span class="detail-label">Type</span>
                                           <span class="detail-value" x-text="device.type"></span>
@@ -704,20 +724,12 @@
                                           <span class="detail-label">Driver</span>
                                           <span class="detail-value" x-text="device.driver"></span>
                                         </div>
-                                        <div class="detail-row">
-                                          <span class="detail-label">Last Seen</span>
-                                          <span class="detail-value" x-text="device.last_seen || '—'"></span>
-                                        </div>
                                       </div>
                                       <div class="detail-group">
-                                        <h4>Métriques SNMP</h4>
+                                        <h4>Métriques</h4>
                                         <div class="detail-row">
                                           <span class="detail-label">Uptime</span>
                                           <span class="detail-value" x-text="device.metrics?.uptime_human || '—'"></span>
-                                        </div>
-                                        <div class="detail-row">
-                                          <span class="detail-label">sysDescr</span>
-                                          <span class="detail-value" style="font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" x-text="device.metrics?.sys_descr || '—'"></span>
                                         </div>
                                       </div>
                                     </div>
@@ -737,44 +749,295 @@
         </div>
 
         <!-- VUE : Site Spécifique -->
-        <div x-show="currentView === 'site' && selectedSite" class="fade-in">
-          <!-- Bandeau Intelligence Site -->
-          <div class="site-intel" x-data="{ expanded: true }">
-            <div class="site-intel-header">
-              <h3 x-text="`Intelligence Site: ${selectedSite?.name}`"></h3>
-              <button class="site-intel-toggle" @click="expanded = !expanded" x-text="expanded ? 'Masquer' : 'Afficher'"></button>
+        <div x-show="currentView === 'site' && selectedSite" class="fade-in" x-data="siteView()">
+
+          <!-- KPI Bar avec verdicts -->
+          <div class="kpis" style="margin-bottom: 24px;">
+            <div class="kpi">
+              <div class="kpi-label">Total</div>
+              <div class="kpi-value" x-text="siteKpis.total" style="color: var(--primary)"></div>
             </div>
-            <div class="site-intel-content" x-show="expanded">
-              <div class="intel-item">
-                <h4>Contact Local</h4>
-                <p x-text="selectedSite?.contact_name || 'Non renseigné'"></p>
-                <p style="font-size: 12px; opacity: 0.9;" x-text="selectedSite?.contact_phone || ''"></p>
+            <div class="kpi">
+              <div class="kpi-label">Fault</div>
+              <div class="kpi-value" x-text="siteKpis.fault" style="color: var(--danger)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Expected Off</div>
+              <div class="kpi-value" x-text="siteKpis.expected_off" style="color: var(--text-muted)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Doubt</div>
+              <div class="kpi-value" x-text="siteKpis.doubt" style="color: var(--warning)"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Unknown</div>
+              <div class="kpi-value" x-text="siteKpis.unknown" style="color: var(--text-muted)"></div>
+            </div>
+          </div>
+
+          <!-- Configuration Panel -->
+          <div class="card" style="margin-bottom: 24px;">
+            <details open>
+              <summary style="cursor: pointer; font-weight: 700; padding: 8px 0; font-size: 16px;">⚙️ Configuration du Site</summary>
+              <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+
+                <!-- Contact -->
+                <div>
+                  <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-muted);">Contact</h4>
+                  <form @submit.prevent="updateContact">
+                    <input type="text" x-model="contactForm.first_name" placeholder="Prénom"
+                           style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <input type="text" x-model="contactForm.last_name" placeholder="Nom"
+                           style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <input type="email" x-model="contactForm.email" placeholder="Email"
+                           style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <input type="tel" x-model="contactForm.phone" placeholder="Téléphone"
+                           style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px;">
+                    <button type="submit" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                      Mettre à jour
+                    </button>
+                  </form>
+                </div>
+
+                <!-- Fréquence de reporting -->
+                <div>
+                  <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-muted);">Fréquence de reporting</h4>
+                  <form @submit.prevent="updateReporting">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Intervalle OK (secondes)</label>
+                    <input type="number" x-model="reportingForm.ok_interval_s"
+                           style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Intervalle KO (secondes)</label>
+                    <input type="number" x-model="reportingForm.ko_interval_s"
+                           style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px;">
+                    <button type="submit" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                      Mettre à jour
+                    </button>
+                  </form>
+                </div>
+
+                <!-- Localisation -->
+                <div>
+                  <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-muted);">Localisation</h4>
+                  <form @submit.prevent="updateLocation">
+                    <input type="text" x-model="locationForm.address" placeholder="Adresse complète"
+                           style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <input type="text" x-model="locationForm.latitude" placeholder="Latitude (48.8566)"
+                           style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <input type="text" x-model="locationForm.longitude" placeholder="Longitude (2.3522)"
+                           style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px;">
+                    <button type="submit" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                      Mettre à jour
+                    </button>
+                  </form>
+                </div>
+
+                <!-- Token -->
+                <div>
+                  <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-muted);">Token d'authentification</h4>
+                  <div style="background: #F5F5F7; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; word-break: break-all;">
+                    <span x-text="selectedSite?.token ? selectedSite.token.substring(0, 20) + '...' : 'Non disponible'"></span>
+                  </div>
+                </div>
+
               </div>
-              <div class="intel-item">
-                <h4>Localisation</h4>
-                <p x-text="selectedSite?.address || 'Non renseignée'"></p>
+            </details>
+          </div>
+
+          <!-- Heatmap du site -->
+          <div class="heatmap-container" style="margin-bottom: 24px;">
+            <h3 style="margin-bottom: 16px;">Disponibilité 7 jours</h3>
+            <div :id="`heatmap-site-${selectedSiteId}`"></div>
+          </div>
+
+          <!-- Filtres -->
+          <div class="card" style="margin-bottom: 16px;">
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--text-muted);">Bâtiment</label>
+                <select x-model="filters.building" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <option value="">Tous</option>
+                  <template x-for="building in availableBuildings" :key="building">
+                    <option :value="building" x-text="building"></option>
+                  </template>
+                </select>
               </div>
-              <div class="intel-item">
-                <h4>Notes Terrain</h4>
-                <p style="font-size: 13px; font-weight: 400; line-height: 1.6;" x-text="selectedSite?.notes || 'Aucune note'"></p>
+              <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--text-muted);">Étage</label>
+                <select x-model="filters.floor" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <option value="">Tous</option>
+                  <template x-for="floor in availableFloors" :key="floor">
+                    <option :value="floor" x-text="floor"></option>
+                  </template>
+                </select>
+              </div>
+              <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--text-muted);">Salle</label>
+                <select x-model="filters.room" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <option value="">Toutes</option>
+                  <template x-for="room in availableRooms" :key="room">
+                    <option :value="room" x-text="room"></option>
+                  </template>
+                </select>
+              </div>
+              <div style="padding-top: 24px;">
+                <button @click="clearFilters" style="padding: 8px 16px; background: var(--text-muted); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                  Effacer
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Inventaire du site (même structure hiérarchique) -->
+          <!-- Ajouter un équipement -->
+          <div class="card" style="margin-bottom: 24px;">
+            <details>
+              <summary style="cursor: pointer; font-weight: 700; padding: 8px 0; font-size: 16px;">➕ Ajouter un équipement</summary>
+              <form @submit.prevent="addDevice" style="margin-top: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                  <input type="text" x-model="newDevice.name" placeholder="Nom" required
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <input type="text" x-model="newDevice.ip" placeholder="IP" required
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <select x-model="newDevice.driver" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                    <option value="ping">Ping</option>
+                    <option value="snmp">SNMP</option>
+                    <option value="pjlink">PJLink</option>
+                    <option value="zigbee">Zigbee</option>
+                  </select>
+                  <input type="text" x-model="newDevice.type" placeholder="Type"
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <input type="text" x-model="newDevice.building" placeholder="Bâtiment"
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <input type="text" x-model="newDevice.floor" placeholder="Étage"
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  <input type="text" x-model="newDevice.room" placeholder="Salle"
+                         style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                </div>
+                <button type="submit" style="padding: 10px 20px; background: var(--success); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                  Ajouter
+                </button>
+              </form>
+            </details>
+          </div>
+
+          <!-- Table des équipements avec verdicts -->
           <div class="card">
-            <div class="card-title" x-text="`Équipements du site ${selectedSite?.name}`"></div>
-            <!-- Réutiliser la même structure hiérarchique mais filtrée pour ce site -->
-            <p class="muted">Chargement...</p>
+            <h3 style="margin-bottom: 16px;">Équipements supervisés</h3>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border); background: #FAFAFA;">
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Nom</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">IP</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Type</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Driver</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Emplacement</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Status</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Verdict</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Détail</th>
+                    <th style="padding: 12px; text-align: left; font-weight: 700;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="device in filteredDevices" :key="device.id">
+                    <tr style="border-bottom: 1px solid var(--border);"
+                        :class="{ 'hidden': interventionMode && device.status === 'online' }">
+                      <td style="padding: 12px; font-weight: 600;" x-text="device.name"></td>
+                      <td style="padding: 12px; font-family: monospace; font-size: 11px;" x-text="device.ip"></td>
+                      <td style="padding: 12px;" x-text="device.type"></td>
+                      <td style="padding: 12px;" x-text="device.driver"></td>
+                      <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">
+                        <span x-text="device.building || '—'"></span> /
+                        <span x-text="device.floor || '—'"></span> /
+                        <span x-text="device.room || '—'"></span>
+                      </td>
+                      <td style="padding: 12px;">
+                        <span class="device-status" :class="device.status" x-text="device.status" style="display: inline-block;"></span>
+                      </td>
+                      <td style="padding: 12px;">
+                        <span x-show="device.verdict" class="device-status"
+                              :class="device.verdict"
+                              x-text="device.verdict"
+                              style="display: inline-block;"></span>
+                        <span x-show="!device.verdict" style="color: var(--text-muted);">—</span>
+                      </td>
+                      <td style="padding: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-muted);"
+                          x-text="device.detail || '—'"></td>
+                      <td style="padding: 12px;">
+                        <button @click="editDevice(device)" style="padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-right: 4px;">
+                          ✏️
+                        </button>
+                        <button @click="deleteDevice(device.id)" style="padding: 4px 8px; background: var(--danger); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        <!-- VUE : Heatmap -->
-        <div x-show="currentView === 'heatmap'" class="fade-in">
-          <h2 style="margin-bottom: 20px; font-size: 24px; font-weight: 800;">Heatmap de Disponibilité (7 Jours)</h2>
-          <div class="heatmap-container">
-            <div id="heatmap"></div>
+          <!-- Modal Edit Device -->
+          <div x-show="editModal.show" @click.away="editModal.show = false"
+               style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div @click.stop style="background: white; border-radius: 12px; padding: 32px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+              <h3 style="margin-bottom: 20px;">Éditer l'équipement</h3>
+              <form @submit.prevent="updateDevice">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Nom</label>
+                    <input type="text" x-model="editModal.device.name" required
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">IP</label>
+                    <input type="text" x-model="editModal.device.ip" required
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Type</label>
+                    <input type="text" x-model="editModal.device.type"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Driver</label>
+                    <select x-model="editModal.device.driver" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                      <option value="ping">Ping</option>
+                      <option value="snmp">SNMP</option>
+                      <option value="pjlink">PJLink</option>
+                      <option value="zigbee">Zigbee</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Bâtiment</label>
+                    <input type="text" x-model="editModal.device.building"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Étage</label>
+                    <input type="text" x-model="editModal.device.floor"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                  <div style="grid-column: 1 / -1;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Salle</label>
+                    <input type="text" x-model="editModal.device.room"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                  <button type="button" @click="editModal.show = false"
+                          style="padding: 10px 20px; background: var(--text-muted); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    Annuler
+                  </button>
+                  <button type="submit"
+                          style="padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    Sauvegarder
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
+
         </div>
 
         <!-- VUE : Settings -->
@@ -791,58 +1054,52 @@
   </div>
 
   <script>
+    let mapInstance = null;
+
     function app() {
       return {
-        // État de l'application
         currentView: 'overview',
         selectedSiteId: null,
         selectedSite: null,
         breadcrumb: [],
         interventionMode: false,
 
-        // Données
         sites: [],
-        kpis: {
-          sites: 0,
-          devices: 0,
-          online: 0,
-          offline: 0
-        },
+        kpis: { sites: 0, devices: 0, online: 0, offline: 0 },
         hierarchyData: {},
+        siteHierarchy: {},
         expandedItems: {},
         expandedDevices: {},
 
-        // Initialisation
         async init() {
           await this.loadSites();
           await this.loadKPIs();
           await this.loadInventory();
         },
 
-        // Navigation
-        navigateTo(view, siteId = null) {
+        async navigateTo(view, siteId = null) {
           this.currentView = view;
           this.selectedSiteId = siteId;
-
-          // Mise à jour du fil d'Ariane
           this.breadcrumb = [];
-          if (view === 'inventory') {
+
+          if (view === 'map') {
+            this.breadcrumb = ['Carte'];
+            setTimeout(() => this.initMap(), 100);
+          } else if (view === 'inventory') {
             this.breadcrumb = ['Inventaire'];
           } else if (view === 'site' && siteId) {
             const site = this.sites.find(s => s.id === siteId);
             if (site) {
               this.selectedSite = site;
               this.breadcrumb = ['Sites', site.name];
+              await this.loadSiteEquipments(siteId);
+              setTimeout(() => this.renderSiteHeatmap(siteId), 100);
             }
-          } else if (view === 'heatmap') {
-            this.breadcrumb = ['Heatmap'];
-            setTimeout(() => this.renderHeatmap(), 100);
           } else if (view === 'settings') {
             this.breadcrumb = ['Réglages'];
           }
         },
 
-        // Chargement des données
         async loadSites() {
           try {
             const response = await fetch('/api/sites');
@@ -856,13 +1113,7 @@
         async loadKPIs() {
           try {
             const response = await fetch('/api/kpis');
-            const data = await response.json();
-            this.kpis = {
-              sites: data.total_sites || 0,
-              devices: data.total_devices || 0,
-              online: data.online_devices || 0,
-              offline: data.offline_devices || 0
-            };
+            this.kpis = await response.json();
           } catch (error) {
             console.error('Erreur chargement KPIs:', error);
           }
@@ -878,7 +1129,16 @@
           }
         },
 
-        // Gestion hiérarchie
+        async loadSiteEquipments(siteId) {
+          try {
+            const response = await fetch('/api/inventory-hierarchy');
+            const data = await response.json();
+            this.siteHierarchy = data.hierarchy[siteId] || {};
+          } catch (error) {
+            console.error('Erreur chargement équipements site:', error);
+          }
+        },
+
         toggleHierarchy(key) {
           this.expandedItems[key] = !this.expandedItems[key];
         },
@@ -892,66 +1152,297 @@
           return site ? site.name : `Site ${siteId}`;
         },
 
-        // Mode Intervention
-        applyInterventionMode() {
-          // Le filtrage se fait automatiquement via :class dans le template
-          console.log('Mode Intervention:', this.interventionMode ? 'ACTIVÉ' : 'DÉSACTIVÉ');
-        },
-
-        // Heatmap
-        renderHeatmap() {
-          // Données simulées (à remplacer par API)
-          const series = [];
-          const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-
-          for (let day = 0; day < 7; day++) {
-            const data = [];
-            for (let hour = 0; hour < 24; hour++) {
-              data.push({
-                x: `${hour}h`,
-                y: Math.random() * 100 // Disponibilité en %
-              });
-            }
-            series.push({
-              name: days[day],
-              data: data
-            });
+        async initMap() {
+          if (mapInstance) {
+            mapInstance.remove();
           }
 
-          const options = {
-            series: series,
-            chart: {
-              height: 500,
-              type: 'heatmap',
-              toolbar: { show: false }
-            },
-            dataLabels: { enabled: false },
-            colors: ['#FF3B30'],
-            plotOptions: {
-              heatmap: {
-                colorScale: {
-                  ranges: [
-                    { from: 0, to: 50, color: '#FF3B30', name: 'Panne' },
-                    { from: 50, to: 90, color: '#FF9500', name: 'Instable' },
-                    { from: 90, to: 100, color: '#34C759', name: 'Opérationnel' }
-                  ]
+          mapInstance = L.map('map').setView([46.603354, 1.888334], 6);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+          }).addTo(mapInstance);
+
+          try {
+            const response = await fetch('/api/sites/map-data');
+            const data = await response.json();
+
+            if (data.sites && data.sites.length > 0) {
+              data.sites.forEach(site => {
+                const icon = L.divIcon({
+                  className: 'custom-marker',
+                  html: `<div style="background-color: ${site.color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+                  iconSize: [24, 24]
+                });
+
+                const marker = L.marker([site.latitude, site.longitude], { icon }).addTo(mapInstance);
+                marker.bindPopup(`
+                  <div style="min-width: 200px;">
+                    <h3 style="margin: 0 0 8px 0;">${site.site_name}</h3>
+                    <p style="color: #64748b; font-size: 13px;">${site.address || 'Adresse non renseignée'}</p>
+                    <div>
+                      <div>🟢 Online: ${site.devices_online}</div>
+                      <div>🔴 Offline: ${site.devices_offline}</div>
+                    </div>
+                  </div>
+                `);
+              });
+
+              const bounds = L.latLngBounds(data.sites.map(s => [s.latitude, s.longitude]));
+              mapInstance.fitBounds(bounds, { padding: [50, 50] });
+            }
+          } catch (error) {
+            console.error('Erreur chargement carte:', error);
+          }
+        },
+
+        async renderSiteHeatmap(siteId) {
+          try {
+            const response = await fetch(`/api/availability-heatmap?site_id=${siteId}&days=7`);
+            const data = await response.json();
+
+            const options = {
+              series: data.heatmap || [],
+              chart: { height: 400, type: 'heatmap', toolbar: { show: false } },
+              dataLabels: { enabled: false },
+              colors: ['#FF3B30'],
+              plotOptions: {
+                heatmap: {
+                  colorScale: {
+                    ranges: [
+                      { from: 0, to: 50, color: '#FF3B30', name: 'Panne' },
+                      { from: 50, to: 90, color: '#FF9500', name: 'Instable' },
+                      { from: 90, to: 100, color: '#34C759', name: 'OK' }
+                    ]
+                  }
                 }
               }
-            },
-            xaxis: {
-              type: 'category'
-            },
-            title: {
-              text: 'Disponibilité par heure et par jour',
-              style: {
-                fontSize: '16px',
-                fontWeight: 700
-              }
-            }
+            };
+
+            new ApexCharts(document.querySelector(`#heatmap-site-${siteId}`), options).render();
+          } catch (error) {
+            console.error('Erreur heatmap:', error);
+          }
+        }
+      }
+    }
+
+    // Site-specific view component
+    function siteView() {
+      return {
+        allDevices: [],
+        siteKpis: { total: 0, fault: 0, expected_off: 0, doubt: 0, unknown: 0 },
+        filters: { building: '', floor: '', room: '' },
+        contactForm: { first_name: '', last_name: '', email: '', phone: '' },
+        reportingForm: { ok_interval_s: 300, ko_interval_s: 60 },
+        locationForm: { address: '', latitude: '', longitude: '' },
+        newDevice: { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' },
+        editModal: { show: false, device: {} },
+
+        async init() {
+          await this.loadSiteDevices();
+          this.loadSiteConfig();
+        },
+
+        async loadSiteDevices() {
+          try {
+            const siteId = Alpine.store('app')?.selectedSiteId || this.$root.selectedSiteId;
+            if (!siteId) return;
+
+            const response = await fetch(`/api/sites/${siteId}/devices`);
+            const data = await response.json();
+            this.allDevices = data.devices || [];
+            this.calculateKPIs();
+          } catch (error) {
+            console.error('Erreur chargement devices:', error);
+          }
+        },
+
+        loadSiteConfig() {
+          const site = this.$root.selectedSite;
+          if (!site) return;
+
+          this.contactForm = {
+            first_name: site.contact_first_name || '',
+            last_name: site.contact_last_name || '',
+            email: site.contact_email || '',
+            phone: site.contact_phone || ''
           };
 
-          const chart = new ApexCharts(document.querySelector("#heatmap"), options);
-          chart.render();
+          this.reportingForm = {
+            ok_interval_s: site.ok_interval_s || 300,
+            ko_interval_s: site.ko_interval_s || 60
+          };
+
+          this.locationForm = {
+            address: site.address || '',
+            latitude: site.latitude || '',
+            longitude: site.longitude || ''
+          };
+        },
+
+        calculateKPIs() {
+          this.siteKpis = {
+            total: this.allDevices.length,
+            fault: this.allDevices.filter(d => d.verdict === 'fault').length,
+            expected_off: this.allDevices.filter(d => d.verdict === 'expected_off').length,
+            doubt: this.allDevices.filter(d => d.verdict === 'doubt').length,
+            unknown: this.allDevices.filter(d => d.status === 'unknown').length
+          };
+        },
+
+        get availableBuildings() {
+          return [...new Set(this.allDevices.map(d => d.building).filter(Boolean))].sort();
+        },
+
+        get availableFloors() {
+          let devices = this.allDevices;
+          if (this.filters.building) {
+            devices = devices.filter(d => d.building === this.filters.building);
+          }
+          return [...new Set(devices.map(d => d.floor).filter(Boolean))].sort(this.sortFloors);
+        },
+
+        get availableRooms() {
+          let devices = this.allDevices;
+          if (this.filters.building) {
+            devices = devices.filter(d => d.building === this.filters.building);
+          }
+          if (this.filters.floor) {
+            devices = devices.filter(d => d.floor === this.filters.floor);
+          }
+          return [...new Set(devices.map(d => d.room).filter(Boolean))].sort();
+        },
+
+        get filteredDevices() {
+          return this.allDevices.filter(device => {
+            if (this.filters.building && device.building !== this.filters.building) return false;
+            if (this.filters.floor && device.floor !== this.filters.floor) return false;
+            if (this.filters.room && device.room !== this.filters.room) return false;
+            return true;
+          });
+        },
+
+        sortFloors(a, b) {
+          const floorOrder = { 'SS-3': -3, 'SS-2': -2, 'SS-1': -1, 'RDC': 0 };
+          const aVal = floorOrder[a] !== undefined ? floorOrder[a] : parseInt(a) || 999;
+          const bVal = floorOrder[b] !== undefined ? floorOrder[b] : parseInt(b) || 999;
+          return aVal - bVal;
+        },
+
+        clearFilters() {
+          this.filters = { building: '', floor: '', room: '' };
+        },
+
+        async updateContact() {
+          try {
+            const siteId = this.$root.selectedSiteId;
+            const response = await fetch(`/api/sites/${siteId}/contact`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.contactForm)
+            });
+            if (response.ok) {
+              alert('Contact mis à jour');
+              location.reload();
+            }
+          } catch (error) {
+            console.error('Erreur update contact:', error);
+            alert('Erreur lors de la mise à jour');
+          }
+        },
+
+        async updateReporting() {
+          try {
+            const siteId = this.$root.selectedSiteId;
+            const response = await fetch(`/api/sites/${siteId}/reporting`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.reportingForm)
+            });
+            if (response.ok) {
+              alert('Fréquence mise à jour');
+              location.reload();
+            }
+          } catch (error) {
+            console.error('Erreur update reporting:', error);
+            alert('Erreur lors de la mise à jour');
+          }
+        },
+
+        async updateLocation() {
+          try {
+            const siteId = this.$root.selectedSiteId;
+            const response = await fetch(`/api/sites/${siteId}/location`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.locationForm)
+            });
+            if (response.ok) {
+              alert('Localisation mise à jour');
+              location.reload();
+            }
+          } catch (error) {
+            console.error('Erreur update location:', error);
+            alert('Erreur lors de la mise à jour');
+          }
+        },
+
+        async addDevice() {
+          try {
+            const siteId = this.$root.selectedSiteId;
+            const response = await fetch(`/api/sites/${siteId}/devices`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.newDevice)
+            });
+            if (response.ok) {
+              alert('Équipement ajouté');
+              this.newDevice = { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' };
+              await this.loadSiteDevices();
+            }
+          } catch (error) {
+            console.error('Erreur add device:', error);
+            alert('Erreur lors de l\'ajout');
+          }
+        },
+
+        editDevice(device) {
+          this.editModal.device = { ...device };
+          this.editModal.show = true;
+        },
+
+        async updateDevice() {
+          try {
+            const response = await fetch(`/api/devices/${this.editModal.device.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.editModal.device)
+            });
+            if (response.ok) {
+              alert('Équipement mis à jour');
+              this.editModal.show = false;
+              await this.loadSiteDevices();
+            }
+          } catch (error) {
+            console.error('Erreur update device:', error);
+            alert('Erreur lors de la mise à jour');
+          }
+        },
+
+        async deleteDevice(deviceId) {
+          if (!confirm('Supprimer cet équipement ?')) return;
+
+          try {
+            const response = await fetch(`/api/devices/${deviceId}`, { method: 'DELETE' });
+            if (response.ok) {
+              alert('Équipement supprimé');
+              await this.loadSiteDevices();
+            }
+          } catch (error) {
+            console.error('Erreur delete device:', error);
+            alert('Erreur lors de la suppression');
+          }
         }
       }
     }
