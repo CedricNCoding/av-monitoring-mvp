@@ -1239,28 +1239,53 @@
         newDevice: { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' },
         editModal: { show: false, device: {} },
 
-        async init() {
-          await this.loadSiteDevices();
-          this.loadSiteConfig();
+        init() {
+          // Utiliser $watch pour réagir aux changements de selectedSiteId
+          this.$watch('$root.selectedSiteId', (newId) => {
+            if (newId) {
+              this.loadSiteDevices(newId);
+              this.loadSiteConfig();
+            }
+          });
+
+          // Charger immédiatement si un site est déjà sélectionné
+          if (this.$root.selectedSiteId) {
+            this.loadSiteDevices(this.$root.selectedSiteId);
+            this.loadSiteConfig();
+          }
         },
 
-        async loadSiteDevices() {
+        async loadSiteDevices(siteId) {
           try {
-            const siteId = Alpine.store('app')?.selectedSiteId || this.$root.selectedSiteId;
-            if (!siteId) return;
+            const id = siteId || this.$root.selectedSiteId;
+            if (!id) {
+              console.warn('No site ID available in loadSiteDevices');
+              return;
+            }
 
-            const response = await fetch(`/api/sites/${siteId}/devices`);
+            console.log(`Loading devices for site ${id}...`);
+            const response = await fetch(`/api/sites/${id}/devices`);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const data = await response.json();
             this.allDevices = data.devices || [];
+            console.log(`Loaded ${this.allDevices.length} devices for site ${id}`);
             this.calculateKPIs();
           } catch (error) {
             console.error('Erreur chargement devices:', error);
+            this.allDevices = [];
           }
         },
 
         loadSiteConfig() {
           const site = this.$root.selectedSite;
-          if (!site) return;
+          if (!site) {
+            console.warn('No site selected in loadSiteConfig');
+            return;
+          }
+
+          console.log('Loading site config for:', site.name, site);
 
           this.contactForm = {
             first_name: site.contact_first_name || '',
@@ -1279,6 +1304,8 @@
             latitude: site.latitude || '',
             longitude: site.longitude || ''
           };
+
+          console.log('Site config loaded. Contact:', this.contactForm, 'Reporting:', this.reportingForm, 'Location:', this.locationForm);
         },
 
         calculateKPIs() {
@@ -1337,6 +1364,10 @@
         async updateContact() {
           try {
             const siteId = this.$root.selectedSiteId;
+            if (!siteId) {
+              alert('Aucun site sélectionné');
+              return;
+            }
             const response = await fetch(`/api/sites/${siteId}/contact`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -1344,7 +1375,11 @@
             });
             if (response.ok) {
               alert('Contact mis à jour');
-              location.reload();
+              // Recharger les données du site
+              await this.$root.loadSites();
+              await this.$root.navigateTo('site', siteId);
+            } else {
+              alert('Erreur lors de la mise à jour');
             }
           } catch (error) {
             console.error('Erreur update contact:', error);
@@ -1355,6 +1390,10 @@
         async updateReporting() {
           try {
             const siteId = this.$root.selectedSiteId;
+            if (!siteId) {
+              alert('Aucun site sélectionné');
+              return;
+            }
             const response = await fetch(`/api/sites/${siteId}/reporting`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -1362,7 +1401,10 @@
             });
             if (response.ok) {
               alert('Fréquence mise à jour');
-              location.reload();
+              await this.$root.loadSites();
+              await this.$root.navigateTo('site', siteId);
+            } else {
+              alert('Erreur lors de la mise à jour');
             }
           } catch (error) {
             console.error('Erreur update reporting:', error);
@@ -1373,6 +1415,10 @@
         async updateLocation() {
           try {
             const siteId = this.$root.selectedSiteId;
+            if (!siteId) {
+              alert('Aucun site sélectionné');
+              return;
+            }
             const response = await fetch(`/api/sites/${siteId}/location`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -1380,7 +1426,10 @@
             });
             if (response.ok) {
               alert('Localisation mise à jour');
-              location.reload();
+              await this.$root.loadSites();
+              await this.$root.navigateTo('site', siteId);
+            } else {
+              alert('Erreur lors de la mise à jour');
             }
           } catch (error) {
             console.error('Erreur update location:', error);
@@ -1391,6 +1440,10 @@
         async addDevice() {
           try {
             const siteId = this.$root.selectedSiteId;
+            if (!siteId) {
+              alert('Aucun site sélectionné');
+              return;
+            }
             const response = await fetch(`/api/sites/${siteId}/devices`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1399,7 +1452,10 @@
             if (response.ok) {
               alert('Équipement ajouté');
               this.newDevice = { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' };
-              await this.loadSiteDevices();
+              await this.loadSiteDevices(siteId);
+            } else {
+              const error = await response.json();
+              alert(error.detail || 'Erreur lors de l\'ajout');
             }
           } catch (error) {
             console.error('Erreur add device:', error);
@@ -1414,6 +1470,7 @@
 
         async updateDevice() {
           try {
+            const siteId = this.$root.selectedSiteId;
             const response = await fetch(`/api/devices/${this.editModal.device.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -1422,7 +1479,9 @@
             if (response.ok) {
               alert('Équipement mis à jour');
               this.editModal.show = false;
-              await this.loadSiteDevices();
+              await this.loadSiteDevices(siteId);
+            } else {
+              alert('Erreur lors de la mise à jour');
             }
           } catch (error) {
             console.error('Erreur update device:', error);
@@ -1434,10 +1493,13 @@
           if (!confirm('Supprimer cet équipement ?')) return;
 
           try {
+            const siteId = this.$root.selectedSiteId;
             const response = await fetch(`/api/devices/${deviceId}`, { method: 'DELETE' });
             if (response.ok) {
               alert('Équipement supprimé');
-              await this.loadSiteDevices();
+              await this.loadSiteDevices(siteId);
+            } else {
+              alert('Erreur lors de la suppression');
             }
           } catch (error) {
             console.error('Erreur delete device:', error);

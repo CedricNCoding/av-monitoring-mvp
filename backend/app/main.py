@@ -1545,7 +1545,7 @@ def ui_app(request: Request):
 # ------------------------------------------------------------
 @app.get("/api/sites")
 def api_list_sites(db: Session = Depends(get_db)):
-    """Liste tous les sites avec leurs compteurs d'équipements."""
+    """Liste tous les sites avec leurs compteurs d'équipements et toutes leurs configurations."""
     sites = db.query(Site).all()
     result = []
 
@@ -1554,13 +1554,26 @@ def api_list_sites(db: Session = Depends(get_db)):
         result.append({
             "id": site.id,
             "name": site.name,
+            "token": site.token,
             "device_count": len(devices),
+            # Contact
+            "contact_first_name": site.contact_first_name,
+            "contact_last_name": site.contact_last_name,
             "contact_name": site.contact_first_name and site.contact_last_name
                            and f"{site.contact_first_name} {site.contact_last_name}" or None,
+            "contact_email": site.contact_email,
             "contact_phone": site.contact_phone,
+            "contact_title": site.contact_title,
+            # Reporting
+            "ok_interval_s": site.ok_interval_s,
+            "ko_interval_s": site.ko_interval_s,
+            "doubt_after_days": site.doubt_after_days,
+            # Location
             "address": site.address,
             "latitude": site.latitude,
             "longitude": site.longitude,
+            "timezone": site.timezone,
+            # Autres
             "notes": None  # TODO: Ajouter colonne 'notes' au modèle Site si besoin
         })
 
