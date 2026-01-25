@@ -749,7 +749,7 @@
         </div>
 
         <!-- VUE : Site Spécifique -->
-        <div x-show="currentView === 'site' && selectedSite" class="fade-in" x-data="siteView()">
+        <div x-show="currentView === 'site' && selectedSite" class="fade-in">
 
           <!-- KPI Bar avec verdicts -->
           <div class="kpis" style="margin-bottom: 24px;">
@@ -1071,6 +1071,16 @@
         expandedItems: {},
         expandedDevices: {},
 
+        // Site view data
+        allDevices: [],
+        siteKpis: { total: 0, fault: 0, expected_off: 0, doubt: 0, unknown: 0 },
+        filters: { building: '', floor: '', room: '' },
+        contactForm: { first_name: '', last_name: '', email: '', phone: '' },
+        reportingForm: { ok_interval_s: 300, ko_interval_s: 60 },
+        locationForm: { address: '', latitude: '', longitude: '' },
+        newDevice: { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' },
+        editModal: { show: false, device: {} },
+
         async init() {
           await this.loadSites();
           await this.loadKPIs();
@@ -1093,6 +1103,8 @@
               this.selectedSite = site;
               this.breadcrumb = ['Sites', site.name];
               await this.loadSiteEquipments(siteId);
+              await this.loadSiteDevices(siteId);
+              this.loadSiteConfig();
               setTimeout(() => this.renderSiteHeatmap(siteId), 100);
             }
           } else if (view === 'settings') {
@@ -1223,41 +1235,12 @@
           } catch (error) {
             console.error('Erreur heatmap:', error);
           }
-        }
-      }
-    }
-
-    // Site-specific view component
-    function siteView() {
-      return {
-        allDevices: [],
-        siteKpis: { total: 0, fault: 0, expected_off: 0, doubt: 0, unknown: 0 },
-        filters: { building: '', floor: '', room: '' },
-        contactForm: { first_name: '', last_name: '', email: '', phone: '' },
-        reportingForm: { ok_interval_s: 300, ko_interval_s: 60 },
-        locationForm: { address: '', latitude: '', longitude: '' },
-        newDevice: { name: '', ip: '', driver: 'ping', type: '', building: '', floor: '', room: '' },
-        editModal: { show: false, device: {} },
-
-        init() {
-          // Utiliser $watch pour réagir aux changements de selectedSiteId
-          this.$watch('$root.selectedSiteId', (newId) => {
-            if (newId) {
-              this.loadSiteDevices(newId);
-              this.loadSiteConfig();
-            }
-          });
-
-          // Charger immédiatement si un site est déjà sélectionné
-          if (this.$root.selectedSiteId) {
-            this.loadSiteDevices(this.$root.selectedSiteId);
-            this.loadSiteConfig();
-          }
         },
 
+        // Site-specific methods (moved from siteView)
         async loadSiteDevices(siteId) {
           try {
-            const id = siteId || this.$root.selectedSiteId;
+            const id = siteId || this.selectedSiteId;
             if (!id) {
               console.warn('No site ID available in loadSiteDevices');
               return;
@@ -1279,7 +1262,7 @@
         },
 
         loadSiteConfig() {
-          const site = this.$root.selectedSite;
+          const site = this.selectedSite;
           if (!site) {
             console.warn('No site selected in loadSiteConfig');
             return;
@@ -1363,7 +1346,7 @@
 
         async updateContact() {
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             if (!siteId) {
               alert('Aucun site sélectionné');
               return;
@@ -1375,9 +1358,8 @@
             });
             if (response.ok) {
               alert('Contact mis à jour');
-              // Recharger les données du site
-              await this.$root.loadSites();
-              await this.$root.navigateTo('site', siteId);
+              await this.loadSites();
+              await this.navigateTo('site', siteId);
             } else {
               alert('Erreur lors de la mise à jour');
             }
@@ -1389,7 +1371,7 @@
 
         async updateReporting() {
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             if (!siteId) {
               alert('Aucun site sélectionné');
               return;
@@ -1401,8 +1383,8 @@
             });
             if (response.ok) {
               alert('Fréquence mise à jour');
-              await this.$root.loadSites();
-              await this.$root.navigateTo('site', siteId);
+              await this.loadSites();
+              await this.navigateTo('site', siteId);
             } else {
               alert('Erreur lors de la mise à jour');
             }
@@ -1414,7 +1396,7 @@
 
         async updateLocation() {
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             if (!siteId) {
               alert('Aucun site sélectionné');
               return;
@@ -1426,8 +1408,8 @@
             });
             if (response.ok) {
               alert('Localisation mise à jour');
-              await this.$root.loadSites();
-              await this.$root.navigateTo('site', siteId);
+              await this.loadSites();
+              await this.navigateTo('site', siteId);
             } else {
               alert('Erreur lors de la mise à jour');
             }
@@ -1439,7 +1421,7 @@
 
         async addDevice() {
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             if (!siteId) {
               alert('Aucun site sélectionné');
               return;
@@ -1470,7 +1452,7 @@
 
         async updateDevice() {
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             const response = await fetch(`/api/devices/${this.editModal.device.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -1493,7 +1475,7 @@
           if (!confirm('Supprimer cet équipement ?')) return;
 
           try {
-            const siteId = this.$root.selectedSiteId;
+            const siteId = this.selectedSiteId;
             const response = await fetch(`/api/devices/${deviceId}`, { method: 'DELETE' });
             if (response.ok) {
               alert('Équipement supprimé');
