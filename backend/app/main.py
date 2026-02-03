@@ -642,21 +642,20 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
         expectations = _as_dict(d.expectations or {})
 
         # S'assurer que snmp et pjlink sont toujours des dicts et jamais None
-        snmp_config = driver_cfg.get("snmp") or {}
-        pjlink_config = driver_cfg.get("pjlink") or {}
+        # IMPORTANT: Conserver les timestamps pour la sync bidirectionnelle
+        snmp_config = dict(driver_cfg.get("snmp") or {})
+        pjlink_config = dict(driver_cfg.get("pjlink") or {})
 
         # Nettoyer les valeurs None dans snmp_config
         if isinstance(snmp_config, dict):
             # Si community est None ou vide, mettre "public" par défaut
             if not snmp_config.get("community"):
-                snmp_config = dict(snmp_config)  # Copie pour ne pas modifier l'original
                 snmp_config["community"] = "public"
 
         # Nettoyer les valeurs None dans pjlink_config
         if isinstance(pjlink_config, dict):
             # Si password est None, mettre chaîne vide
             if pjlink_config.get("password") is None:
-                pjlink_config = dict(pjlink_config)  # Copie
                 pjlink_config["password"] = ""
 
         device_data = {
