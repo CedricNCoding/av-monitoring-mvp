@@ -813,6 +813,7 @@ def create_device(
             "port": max(1, snmp_port),
             "timeout_s": max(1, snmp_timeout_s),
             "retries": max(0, snmp_retries),
+            "_community_updated_at": _now_utc().isoformat(),  # Timestamp création
         }
 
     pj_block = {}
@@ -822,6 +823,7 @@ def create_device(
             "password": password,
             "port": max(1, pjlink_port),
             "timeout_s": max(1, pjlink_timeout_s),
+            "_password_updated_at": _now_utc().isoformat(),  # Timestamp création
         }
 
     driver_config = {}
@@ -854,6 +856,7 @@ def create_device(
     }
 
     # Créer l'équipement
+    now = _now_utc()
     new_device = Device(
         site_id=site_id,
         ip=ip,
@@ -864,6 +867,7 @@ def create_device(
         device_type=(device_type or "unknown").strip(),
         driver=driver,
         driver_config=driver_config,
+        driver_config_updated_at=now,  # Timestamp initial
         expectations=expectations,
         status="unknown",
     )
@@ -924,10 +928,12 @@ def update_device_from_backend(
     if driver == "snmp":
         # S'assurer que community n'est JAMAIS None ou vide
         community = (snmp_community or "").strip()
+        existing_snmp = driver_config.get("snmp", {})
+        old_community = existing_snmp.get("community") if isinstance(existing_snmp, dict) else None
+
         if not community:
             # Si vide, essayer de préserver la valeur existante
-            existing_snmp = driver_config.get("snmp", {})
-            community = existing_snmp.get("community") or "public"
+            community = old_community or "public"
 
         driver_config["snmp"] = {
             "community": community,
@@ -936,19 +942,35 @@ def update_device_from_backend(
             "retries": max(0, snmp_retries),
         }
 
+        # Ajouter timestamp si community a changé
+        if community != old_community:
+            driver_config["snmp"]["_community_updated_at"] = _now_utc().isoformat()
+        elif existing_snmp.get("_community_updated_at"):
+            # Préserver le timestamp existant si pas de changement
+            driver_config["snmp"]["_community_updated_at"] = existing_snmp["_community_updated_at"]
+
     if driver == "pjlink":
         # S'assurer que password n'est JAMAIS None (mais peut être vide si pas de password)
         password = (pjlink_password or "").strip()
+        existing_pjlink = driver_config.get("pjlink", {})
+        old_password = existing_pjlink.get("password") if isinstance(existing_pjlink, dict) else None
+
         if not password:
             # Si vide, essayer de préserver la valeur existante
-            existing_pjlink = driver_config.get("pjlink", {})
-            password = existing_pjlink.get("password") or ""
+            password = old_password or ""
 
         driver_config["pjlink"] = {
             "password": password,
             "port": max(1, pjlink_port),
             "timeout_s": max(1, pjlink_timeout_s),
         }
+
+        # Ajouter timestamp si password a changé
+        if password != old_password:
+            driver_config["pjlink"]["_password_updated_at"] = _now_utc().isoformat()
+        elif existing_pjlink.get("_password_updated_at"):
+            # Préserver le timestamp existant si pas de changement
+            driver_config["pjlink"]["_password_updated_at"] = existing_pjlink["_password_updated_at"]
 
     # Mettre à jour l'équipement
     device.ip = ip
@@ -959,6 +981,25 @@ def update_device_from_backend(
     device.device_type = (device_type or "unknown").strip()
     device.driver = driver
     device.driver_config = driver_config
+
+    # Mettre à jour le timestamp global si la config driver a changé
+    snmp_ts = driver_config.get("snmp", {}).get("_community_updated_at") if driver_config.get("snmp") else None
+    pjlink_ts = driver_config.get("pjlink", {}).get("_password_updated_at") if driver_config.get("pjlink") else None
+
+    latest_ts = None
+    if snmp_ts and pjlink_ts:
+        latest_ts = max(snmp_ts, pjlink_ts)
+    elif snmp_ts:
+        latest_ts = snmp_ts
+    elif pjlink_ts:
+        latest_ts = pjlink_ts
+
+    if latest_ts:
+        try:
+            from dateutil.parser import isoparse
+            device.driver_config_updated_at = isoparse(latest_ts)
+        except:
+            device.driver_config_updated_at = _now_utc()
 
     db.commit()
 
