@@ -488,6 +488,16 @@ def update_device(
     cfg["devices"] = devices
     save_config(CONFIG_PATH, cfg)
 
+    # DEBUG: Vérifier le contenu avant push
+    print(f"🔍 DEBUG avant push_device_config_to_backend:")
+    print(f"   ip passé: {ip}")
+    for dev in cfg.get("devices", []):
+        if dev.get("ip") == ip:
+            print(f"   Device trouvé dans cfg:")
+            print(f"   - snmp: {dev.get('snmp')}")
+            print(f"   - pjlink: {dev.get('pjlink')}")
+            break
+
     # Push la configuration vers le backend (sync bidirectionnelle)
     from src.config_sync import push_device_config_to_backend
     push_device_config_to_backend(cfg, ip)
