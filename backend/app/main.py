@@ -1959,6 +1959,7 @@ def api_get_site_devices(site_id: int, db: Session = Depends(get_db)):
             "ip": device.ip,
             "type": device.device_type,
             "driver": device.driver,
+            "driver_config": _as_dict(device.driver_config or {}),  # IMPORTANT: Inclure driver_config !
             "building": device.building,
             "floor": device.floor,
             "room": device.room,
