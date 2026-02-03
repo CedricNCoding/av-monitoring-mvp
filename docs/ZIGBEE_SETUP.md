@@ -3,9 +3,11 @@
 ## Vue d'Ensemble
 
 Ce guide couvre l'installation complète de la stack Zigbee pour le projet AV Monitoring Agent :
-- **Mosquitto** : Broker MQTT avec TLS obligatoire
+- **Mosquitto** : Broker MQTT avec support TLS (optionnel, recommandé pour production)
 - **Zigbee2MQTT** : Bridge entre dongle USB Zigbee et MQTT
 - **Agent AV Monitoring** : Driver Zigbee intégré
+
+**Mode par défaut :** L'installation configure MQTT en mode non-TLS sur port 1883 (localhost uniquement) pour faciliter la mise en route. Le mode TLS sur port 8883 reste disponible pour la production.
 
 **Avantages Zigbee :**
 - Capteurs sans fil (température, humidité, CO2, etc.)
@@ -65,12 +67,13 @@ sudo ./install_zigbee_stack.sh
 
 Le script va :
 1. Installer Mosquitto + Node.js
-2. Générer certificats TLS auto-signés
+2. Générer certificats TLS auto-signés (pour usage ultérieur optionnel)
 3. Créer 3 users MQTT (admin, zigbee2mqtt, avmonitoring)
 4. Installer Zigbee2MQTT depuis GitHub
-5. Configurer et démarrer les services systemd
-6. Ajouter variables MQTT dans `/etc/default/avmonitoring-agent`
-7. Redémarrer l'agent
+5. Configurer Mosquitto (port 1883 non-TLS + port 8883 TLS)
+6. Configurer et démarrer les services systemd
+7. Ajouter variables MQTT dans `/etc/default/avmonitoring-agent`
+8. Redémarrer l'agent
 
 ### 5. Valider l'installation
 
@@ -88,6 +91,12 @@ Devrait afficher :
 ---
 
 ## Installation Manuelle (Pas à Pas)
+
+**Note :** Cette installation configure Mosquitto en mode dual-listener :
+- **Port 1883** (non-TLS, localhost uniquement) : Mode par défaut, facile à démarrer
+- **Port 8883** (TLS) : Mode production recommandé, certificats auto-signés générés
+
+Zigbee2MQTT et l'agent utilisent le port 1883 par défaut. Pour passer en TLS, modifiez simplement les configurations pour utiliser le port 8883.
 
 ### Étape 1 : Installer Mosquitto
 
@@ -136,17 +145,25 @@ sudo chown -R mosquitto:mosquitto "$CERT_DIR"
 
 ```bash
 sudo tee /etc/mosquitto/conf.d/zigbee.conf <<EOF
-listener 8883
+# Listener non-TLS (localhost uniquement, pour dev/debug)
+listener 1883 127.0.0.1
+protocol mqtt
+
+# Listener TLS (production, recommandé)
+listener 8883 127.0.0.1
+protocol mqtt
 certfile /etc/mosquitto/ca_certificates/server.crt
 cafile /etc/mosquitto/ca_certificates/ca.crt
 keyfile /etc/mosquitto/ca_certificates/server.key
 require_certificate false
 tls_version tlsv1.2
 
+# Authentification obligatoire (tous listeners)
 allow_anonymous false
 password_file /etc/mosquitto/passwd
 acl_file /etc/mosquitto/acl.conf
 
+# Persistence
 persistence true
 persistence_location /var/lib/mosquitto/
 EOF
@@ -199,11 +216,11 @@ permit_join: false
 
 mqtt:
   base_topic: zigbee2mqtt
-  server: mqtts://localhost:8883
-  ca: /etc/mosquitto/ca_certificates/ca.crt
+  server: mqtt://localhost:1883
   user: zigbee2mqtt
   password: VOTRE_MOT_DE_PASSE_ICI
   keepalive: 60
+  version: 4
 
 serial:
   port: /dev/ttyUSB0
@@ -259,16 +276,19 @@ sudo systemctl start zigbee2mqtt
 ### Étape 8 : Configurer l'agent
 
 ```bash
-# Ajouter variables MQTT
+# Ajouter variables MQTT (mode non-TLS par défaut)
 sudo tee -a /etc/default/avmonitoring-agent <<EOF
 
-# Zigbee/MQTT
+# Zigbee/MQTT Configuration
 AVMVP_MQTT_HOST=localhost
-AVMVP_MQTT_PORT=8883
+AVMVP_MQTT_PORT=1883
 AVMVP_MQTT_USER=avmonitoring
 AVMVP_MQTT_PASS=VOTRE_MOT_DE_PASSE_ICI
-AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 AVMVP_MQTT_BASE_TOPIC=zigbee2mqtt
+
+# TLS optionnel (décommentez pour activer mode sécurisé sur port 8883)
+# AVMVP_MQTT_PORT=8883
+# AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 EOF
 
 # Redémarrer agent
@@ -415,12 +435,17 @@ sudo systemctl show avmonitoring-agent | grep AVMVP_MQTT
 # Vérifier fichier env
 sudo cat /etc/default/avmonitoring-agent | grep MQTT
 
-# Tester connexion manuellement
+# Tester connexion manuellement (mode non-TLS)
 source /etc/default/avmonitoring-agent
-mosquitto_sub -h $AVMVP_MQTT_HOST -p $AVMVP_MQTT_PORT \
-  --cafile $AVMVP_MQTT_TLS_CA \
+mosquitto_sub -h $AVMVP_MQTT_HOST -p ${AVMVP_MQTT_PORT:-1883} \
   -u $AVMVP_MQTT_USER -P "$AVMVP_MQTT_PASS" \
   -t '#' -C 1
+
+# Ou si TLS activé (port 8883)
+# mosquitto_sub -h $AVMVP_MQTT_HOST -p 8883 \
+#   --cafile $AVMVP_MQTT_TLS_CA \
+#   -u $AVMVP_MQTT_USER -P "$AVMVP_MQTT_PASS" \
+#   -t '#' -C 1
 ```
 
 ### Problème : Appareils Zigbee offline
@@ -437,9 +462,8 @@ mosquitto_sub -h $AVMVP_MQTT_HOST -p $AVMVP_MQTT_PORT \
 
 **Solutions :**
 ```bash
-# Vérifier réseau Zigbee
-mosquitto_sub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+# Vérifier réseau Zigbee (mode non-TLS par défaut)
+mosquitto_sub -h localhost -p 1883 \
   -u avmonitoring -P 'password' \
   -t 'zigbee2mqtt/bridge/devices' -C 1 | jq .
 

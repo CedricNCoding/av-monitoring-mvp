@@ -293,20 +293,26 @@ configure_mosquitto() {
         cp /etc/mosquitto/conf.d/zigbee.conf /etc/mosquitto/conf.d/zigbee.conf.bak 2>/dev/null || true
     fi
 
-    # Configuration listener TLS
+    # Configuration listeners (TLS + non-TLS pour debugging)
     # IMPORTANT: Ne PAS inclure persistence/persistence_location ici (déjà dans mosquitto.conf)
     cat > /etc/mosquitto/conf.d/zigbee.conf <<'EOF'
-# Zigbee2MQTT TLS listener (port 8883 uniquement)
+# Zigbee2MQTT MQTT listeners
 # Managed by install_zigbee_stack.sh - Do not edit manually
 
-listener 8883
+# Listener non-TLS (localhost uniquement, pour debugging et dev)
+listener 1883 127.0.0.1
+protocol mqtt
+
+# Listener TLS (production, recommandé)
+listener 8883 127.0.0.1
+protocol mqtt
 certfile /etc/mosquitto/ca_certificates/server.crt
 cafile /etc/mosquitto/ca_certificates/ca.crt
 keyfile /etc/mosquitto/ca_certificates/server.key
 require_certificate false
 tls_version tlsv1.2
 
-# Authentification obligatoire
+# Authentification obligatoire (tous listeners)
 allow_anonymous false
 password_file /etc/mosquitto/passwd
 
@@ -581,13 +587,11 @@ permit_join: false
 
 mqtt:
   base_topic: zigbee2mqtt
-  server: mqtts://localhost:8883
-  ca: /etc/mosquitto/ca_certificates/ca.crt
-  reject_unauthorized: true
+  server: mqtt://localhost:1883
   user: zigbee2mqtt
   password: ${MQTT_PASS_Z2M}
   keepalive: 60
-  version: 5
+  version: 4
 
 serial:
   port: ${DONGLE:-/dev/ttyUSB0}
@@ -697,11 +701,13 @@ configure_agent_mqtt() {
 
 # Zigbee/MQTT Configuration (ajouté par install_zigbee_stack.sh)
 AVMVP_MQTT_HOST=localhost
-AVMVP_MQTT_PORT=8883
+AVMVP_MQTT_PORT=1883
 AVMVP_MQTT_USER=avmonitoring
 AVMVP_MQTT_PASS=${MQTT_PASS_AGENT}
-AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 AVMVP_MQTT_BASE_TOPIC=zigbee2mqtt
+# TLS optionnel (utilisez port 8883 + décommentez ligne suivante pour activer)
+# AVMVP_MQTT_PORT=8883
+# AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 EOF
 
     chmod 640 "$ENV_FILE"

@@ -28,7 +28,7 @@ Ce guide décrit l'installation complète d'un agent AV Monitoring avec support 
 │  - Collecte Zigbee (via MQTT)           │
 │  - WebUI locale :8080                   │
 └───────┬─────────────────────────────────┘
-        │ MQTT TLS (localhost:8883)
+        │ MQTT (localhost:1883, TLS optionnel :8883)
         ↓
 ┌─────────────────────────────────────────┐
 │  Stack Zigbee (optionnel)               │
@@ -266,8 +266,8 @@ chmod +x install_zigbee_stack.sh
 1. ✅ Installer Mosquitto (broker MQTT)
 2. ✅ Installer Node.js 20.x
 3. ✅ Détecter le dongle USB automatiquement
-4. ✅ Générer certificats TLS auto-signés
-5. ✅ Configurer Mosquitto (port 8883, TLS, ACL)
+4. ✅ Générer certificats TLS auto-signés (pour usage optionnel)
+5. ✅ Configurer Mosquitto (ports 1883 non-TLS + 8883 TLS, ACL)
 6. ✅ Créer 3 utilisateurs MQTT (admin, zigbee2mqtt, avmonitoring)
 7. ✅ Installer Zigbee2MQTT dans /opt/zigbee2mqtt
 8. ✅ Configurer et démarrer les services
@@ -299,18 +299,17 @@ systemctl status mosquitto
 systemctl status zigbee2mqtt
 systemctl status avmonitoring-agent
 
-# 2. Port MQTT ouvert
-ss -tln | grep 8883
-# Doit afficher : LISTEN sur 0.0.0.0:8883
+# 2. Ports MQTT ouverts
+ss -tln | grep -E "1883|8883"
+# Doit afficher : LISTEN sur 127.0.0.1:1883 et 127.0.0.1:8883
 
 # 3. Credentials MQTT
 cat /root/zigbee_credentials.txt
 # Doit afficher les 3 passwords générés
 
-# 4. Test connexion MQTT
+# 4. Test connexion MQTT (mode non-TLS par défaut)
 source /root/zigbee_credentials.txt
-mosquitto_sub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+mosquitto_sub -h localhost -p 1883 \
   -u avmonitoring -P "$MQTT_PASS_AGENT" \
   -t 'zigbee2mqtt/bridge/state' -C 1 -W 5
 
@@ -325,13 +324,16 @@ Le script d'installation a automatiquement ajouté les variables MQTT dans `/etc
 # Vérifier que les variables sont présentes
 grep AVMVP_MQTT /etc/default/avmonitoring-agent
 
-# Doit afficher (décommenté) :
+# Doit afficher (décommenté, mode non-TLS par défaut) :
 # AVMVP_MQTT_HOST=localhost
-# AVMVP_MQTT_PORT=8883
+# AVMVP_MQTT_PORT=1883
 # AVMVP_MQTT_USER=avmonitoring
 # AVMVP_MQTT_PASS=<mot_de_passe_généré>
-# AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 # AVMVP_MQTT_BASE_TOPIC=zigbee2mqtt
+#
+# TLS optionnel (commenté par défaut, à activer pour production) :
+# # AVMVP_MQTT_PORT=8883
+# # AVMVP_MQTT_TLS_CA=/etc/mosquitto/ca_certificates/ca.crt
 ```
 
 **Redémarrer l'agent pour prendre en compte :**
@@ -357,8 +359,7 @@ journalctl -u avmonitoring-agent -n 50 | grep -i mqtt
 **Option 2 : Via MQTT**
 ```bash
 source /root/zigbee_credentials.txt
-mosquitto_pub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+mosquitto_pub -h localhost -p 1883 \
   -u admin -P "$MQTT_PASS_ADMIN" \
   -t 'zigbee2mqtt/bridge/request/permit_join' \
   -m '{"value": true, "time": 60}'
@@ -386,8 +387,7 @@ mosquitto_pub -h localhost -p 8883 \
 **Via MQTT :**
 ```bash
 source /root/zigbee_credentials.txt
-mosquitto_pub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+mosquitto_pub -h localhost -p 1883 \
   -u admin -P "$MQTT_PASS_ADMIN" \
   -t 'zigbee2mqtt/bridge/request/device/rename' \
   -m '{"from": "0x00158d0001234567", "to": "bureau_capteur_temp"}'
@@ -463,9 +463,8 @@ curl -s http://localhost:8080/devices | jq '.'
 ### 5.4 Tester les Devices Zigbee
 
 ```bash
-# Lister les devices Zigbee détectés
-mosquitto_sub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+# Lister les devices Zigbee détectés (mode non-TLS)
+mosquitto_sub -h localhost -p 1883 \
   -u avmonitoring -P "$(grep MQTT_PASS_AGENT /root/zigbee_credentials.txt | cut -d= -f2)" \
   -t 'zigbee2mqtt/#' -C 10
 
@@ -652,9 +651,8 @@ systemctl restart zigbee2mqtt
 
 **Diagnostic :**
 ```bash
-# Vérifier linkquality
-mosquitto_sub -h localhost -p 8883 \
-  --cafile /etc/mosquitto/ca_certificates/ca.crt \
+# Vérifier linkquality (mode non-TLS)
+mosquitto_sub -h localhost -p 1883 \
   -u avmonitoring -P "$(grep MQTT_PASS_AGENT /root/zigbee_credentials.txt | cut -d= -f2)" \
   -t 'zigbee2mqtt/nom_du_device' -C 1
 
@@ -704,9 +702,9 @@ journalctl -u avmonitoring-agent -f
 # Redémarrage complet
 systemctl restart avmonitoring-agent mosquitto zigbee2mqtt
 
-# Test MQTT
+# Test MQTT (mode non-TLS)
 source /root/zigbee_credentials.txt
-mosquitto_sub -h localhost -p 8883 --cafile /etc/mosquitto/ca_certificates/ca.crt -u avmonitoring -P "$MQTT_PASS_AGENT" -t '#' -C 10
+mosquitto_sub -h localhost -p 1883 -u avmonitoring -P "$MQTT_PASS_AGENT" -t '#' -C 10
 ```
 
 ---

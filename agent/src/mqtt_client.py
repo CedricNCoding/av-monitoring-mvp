@@ -87,19 +87,18 @@ class MQTTClientManager:
             self._last_error = "Missing credentials (AVMVP_MQTT_USER or AVMVP_MQTT_PASS)"
             return
 
-        if not ca_path or not os.path.exists(ca_path):
-            print(f"MQTT configured: no (CA certificate not found: {ca_path})")
-            self._configured = False
-            self._last_error = f"CA certificate not found: {ca_path}"
-            return
+        # TLS est optionnel : si pas de CA, connexion non-TLS
+        tls_mode = "TLS" if ca_path and os.path.exists(ca_path) else "non-TLS"
 
         # Configuration valide
         self._configured = True
         print("MQTT configured: yes")
-        print(f"  Host: {host or 'localhost'}:{port or '8883'}")
+        print(f"  Host: {host or 'localhost'}:{port or '1883'}")
         print(f"  User: {user}")
+        print(f"  Mode: {tls_mode}")
         print(f"  Base topic: {base_topic}")
-        print(f"  CA cert: {ca_path}")
+        if ca_path and os.path.exists(ca_path):
+            print(f"  CA cert: {ca_path}")
         print("  (Connection will be attempted on first use or via init_connection())")
 
     @classmethod
@@ -155,7 +154,7 @@ class MQTTClientManager:
 
         # Lecture env vars
         host = os.getenv("AVMVP_MQTT_HOST", "localhost")
-        port_str = os.getenv("AVMVP_MQTT_PORT", "8883")
+        port_str = os.getenv("AVMVP_MQTT_PORT", "1883")
         user = os.getenv("AVMVP_MQTT_USER")
         password = os.getenv("AVMVP_MQTT_PASS")
         ca_path = os.getenv("AVMVP_MQTT_TLS_CA")
@@ -164,17 +163,16 @@ class MQTTClientManager:
         try:
             port = int(port_str)
         except ValueError:
-            print(f"MQTT: Invalid port '{port_str}', using default 8883")
-            port = 8883
+            print(f"MQTT: Invalid port '{port_str}', using default 1883")
+            port = 1883
 
         # Validation credentials
         if not user or not password:
             print("MQTT: Missing credentials (AVMVP_MQTT_USER or AVMVP_MQTT_PASS)")
             return False
 
-        if not ca_path or not os.path.exists(ca_path):
-            print(f"MQTT: CA certificate not found ({ca_path})")
-            return False
+        # TLS optionnel : si CA fourni et existe, activer TLS
+        use_tls = ca_path and os.path.exists(ca_path)
 
         try:
             # Créer client paho
@@ -183,8 +181,12 @@ class MQTTClientManager:
             # Authentification
             self._client.username_pw_set(user, password)
 
-            # TLS (mandatory)
-            self._client.tls_set(ca_certs=ca_path)
+            # TLS (optionnel)
+            if use_tls:
+                self._client.tls_set(ca_certs=ca_path)
+                print(f"MQTT: TLS enabled with CA: {ca_path}")
+            else:
+                print("MQTT: Connecting without TLS (non-encrypted)")
 
             # Callbacks
             self._client.on_connect = self._on_connect
