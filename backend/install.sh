@@ -95,6 +95,16 @@ import os
 # Ajouter le répertoire backend au path Python
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Charger le fichier .env
+from pathlib import Path
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    for line in env_file.read_text().strip().split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            os.environ[key.strip()] = value.strip()
+
 from app.db import engine, Base
 from app.models import *
 Base.metadata.create_all(engine)

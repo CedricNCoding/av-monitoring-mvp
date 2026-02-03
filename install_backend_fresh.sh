@@ -186,9 +186,21 @@ if [ -f "$BACKEND_DIR/backend/app/database.py" ] && [ -f "$BACKEND_DIR/backend/a
     source venv/bin/activate
 
     python3 <<EOF
+import sys
+import os
+from pathlib import Path
+
+# Charger le fichier .env
+env_file = Path('.env')
+if env_file.exists():
+    for line in env_file.read_text().strip().split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            os.environ[key.strip()] = value.strip()
+
 from app.db import engine, Base
 from app.models import *
-import sys
 
 try:
     Base.metadata.create_all(engine)

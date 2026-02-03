@@ -133,6 +133,18 @@ cd /opt/av-monitoring-mvp/backend
 source venv/bin/activate
 
 python3 <<EOF
+import os
+from pathlib import Path
+
+# Charger le fichier .env
+env_file = Path('.env')
+if env_file.exists():
+    for line in env_file.read_text().strip().split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            os.environ[key.strip()] = value.strip()
+
 from app.db import engine, Base
 from app.models import *
 
@@ -352,7 +364,25 @@ EOF
 # Recréer les tables
 cd /opt/av-monitoring-mvp/backend
 source venv/bin/activate
-python3 -c "from app.db import engine, Base; from app.models import *; Base.metadata.create_all(engine)"
+
+# Charger .env et créer les tables
+python3 <<EOF
+import os
+from pathlib import Path
+
+# Charger le fichier .env
+env_file = Path('.env')
+if env_file.exists():
+    for line in env_file.read_text().strip().split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            os.environ[key.strip()] = value.strip()
+
+from app.db import engine, Base
+from app.models import *
+Base.metadata.create_all(engine)
+EOF
 
 # Appliquer les migrations
 sudo -u postgres psql -d avmvp_db -f migrations/add_driver_config_updated_at.sql
