@@ -90,6 +90,11 @@ cd "$BACKEND_DIR"
 
 # Créer un script Python temporaire dans le bon répertoire
 cat > "$BACKEND_DIR/create_tables_temp.py" << 'PYEOF'
+import sys
+import os
+# Ajouter le répertoire backend au path Python
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from app.database import engine, Base
 from app.models import Site, Device, Observation
 Base.metadata.create_all(engine)
