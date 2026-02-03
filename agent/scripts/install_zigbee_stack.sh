@@ -688,7 +688,49 @@ EOF
 }
 
 # ------------------------------------------------------------
-# 11. Configuration agent AV Monitoring
+# 11. Mise à jour du code agent
+# ------------------------------------------------------------
+
+update_agent_code() {
+    echo ""
+    echo "=========================================="
+    echo "  Mise à jour du code agent"
+    echo "=========================================="
+    echo ""
+
+    AGENT_DIR="/opt/avmonitoring-agent"
+
+    if [ ! -d "$AGENT_DIR" ]; then
+        echo -e "${YELLOW}⚠${NC} Agent non installé dans $AGENT_DIR"
+        echo "  Le script suppose que l'agent est déjà installé"
+        return
+    fi
+
+    # Vérifier si c'est un repo git
+    if [ -d "$AGENT_DIR/.git" ]; then
+        echo "Repository git détecté, mise à jour du code..."
+        cd "$AGENT_DIR"
+
+        # Sauvegarder l'état actuel
+        git stash 2>/dev/null || true
+
+        # Pull dernière version
+        if git pull origin main 2>&1; then
+            echo -e "${GREEN}✓${NC} Code agent mis à jour"
+        else
+            echo -e "${YELLOW}⚠${NC} Erreur lors du git pull (peut-être déjà à jour)"
+        fi
+
+        # Restaurer les modifications locales si nécessaire
+        git stash pop 2>/dev/null || true
+    else
+        echo -e "${YELLOW}⚠${NC} Pas un repository git, skip mise à jour"
+        echo "  Assurez-vous que mqtt_client.py est à jour (version avec TLS optionnel)"
+    fi
+}
+
+# ------------------------------------------------------------
+# 12. Configuration agent AV Monitoring
 # ------------------------------------------------------------
 
 configure_agent_mqtt() {
@@ -1009,6 +1051,7 @@ main() {
     configure_zigbee2mqtt
     install_zigbee2mqtt_service
 
+    update_agent_code      # CRITIQUE: Met à jour mqtt_client.py AVANT config MQTT
     configure_agent_mqtt
 
     # Validation finale avant résumé
