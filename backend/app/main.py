@@ -731,8 +731,10 @@ def update_device_config(
 
     # Parser le timestamp
     try:
-        from dateutil.parser import isoparse
-        incoming_updated_at = isoparse(incoming_updated_at_str)
+        from datetime import datetime
+        # Nettoyer le timestamp (enlever 'Z' et remplacer par '+00:00' si nécessaire)
+        ts_clean = incoming_updated_at_str.replace('Z', '+00:00')
+        incoming_updated_at = datetime.fromisoformat(ts_clean)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid timestamp format: {e}")
 
@@ -1060,8 +1062,9 @@ def update_device_from_backend(
 
     if latest_ts:
         try:
-            from dateutil.parser import isoparse
-            device.driver_config_updated_at = isoparse(latest_ts)
+            from datetime import datetime
+            ts_clean = latest_ts.replace('Z', '+00:00')
+            device.driver_config_updated_at = datetime.fromisoformat(ts_clean)
         except:
             device.driver_config_updated_at = _now_utc()
 
