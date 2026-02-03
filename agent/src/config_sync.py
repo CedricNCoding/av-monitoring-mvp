@@ -219,48 +219,80 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
             ip = d.get("ip", "")
             local_device = local_devices_by_ip.get(ip, {})
 
-            # Fusionner SNMP : backend + préserver community locale si absente/invalide du backend
+            # Fusionner SNMP : backend + préserver community locale si modifiée récemment
             snmp_backend = d.get("snmp") or {}
             snmp_local = local_device.get("snmp") or {}
             snmp_merged = dict(snmp_backend) if isinstance(snmp_backend, dict) else {}
 
-            # Stratégie de fusion pour community:
-            # 1. Si backend a une valeur valide (non None, non vide, non "none") -> utiliser backend
-            # 2. Sinon, si local a une valeur valide -> utiliser local
-            # 3. Sinon, utiliser "public" par défaut
+            # Stratégie de fusion pour community avec timestamps:
+            # 1. Comparer les timestamps de modification (local vs backend)
+            # 2. Garder la version la plus récente
+            # 3. Fallback sur "public" si aucune valeur valide
+
             backend_community = snmp_merged.get("community")
             local_community = snmp_local.get("community") if isinstance(snmp_local, dict) else None
 
-            if backend_community and backend_community != "none" and backend_community.strip():
-                # Backend a une valeur valide
-                snmp_merged["community"] = backend_community.strip()
-                print(f"  📡 {ip}: Using backend SNMP community: {snmp_merged['community']}")
-            elif local_community and local_community != "none" and local_community.strip():
-                # Local a une valeur valide
+            # Timestamps de modification (ISO 8601 strings)
+            local_updated_at = snmp_local.get("_community_updated_at") if isinstance(snmp_local, dict) else None
+            backend_updated_at = snmp_backend.get("_community_updated_at") if isinstance(snmp_backend, dict) else None
+
+            # Décider quelle version utiliser
+            use_local = False
+            if local_updated_at and backend_updated_at:
+                # Les deux ont des timestamps, comparer
+                use_local = local_updated_at > backend_updated_at
+            elif local_updated_at and not backend_updated_at:
+                # Seul local a un timestamp, préférer local
+                use_local = True
+            elif local_community and local_community != "none" and local_community.strip() and not backend_community:
+                # Local a une valeur mais pas backend, utiliser local
+                use_local = True
+
+            if use_local and local_community and local_community != "none" and local_community.strip():
                 snmp_merged["community"] = local_community.strip()
-                print(f"  💾 {ip}: Preserving local SNMP community: {snmp_merged['community']}")
+                snmp_merged["_community_updated_at"] = local_updated_at
+                print(f"  💾 {ip}: Using local SNMP community (modified {local_updated_at}): {snmp_merged['community']}")
+            elif backend_community and backend_community != "none" and backend_community.strip():
+                snmp_merged["community"] = backend_community.strip()
+                if backend_updated_at:
+                    snmp_merged["_community_updated_at"] = backend_updated_at
+                print(f"  📡 {ip}: Using backend SNMP community: {snmp_merged['community']}")
             else:
                 # Aucune valeur valide, fallback sur "public"
                 snmp_merged["community"] = "public"
                 print(f"  ⚠️  {ip}: No valid SNMP community, using default: public")
 
-            # Fusionner PJLink : backend + préserver password local si absent/invalide du backend
+            # Fusionner PJLink : backend + préserver password local si modifié récemment
             pjlink_backend = d.get("pjlink") or {}
             pjlink_local = local_device.get("pjlink") or {}
             pjlink_merged = dict(pjlink_backend) if isinstance(pjlink_backend, dict) else {}
 
-            # Stratégie de fusion pour password (peut être vide volontairement)
+            # Stratégie de fusion pour password avec timestamps
             backend_password = pjlink_merged.get("password")
             local_password = pjlink_local.get("password") if isinstance(pjlink_local, dict) else None
 
-            if backend_password is not None and backend_password != "none":
-                # Backend a défini un password (peut être vide)
-                pjlink_merged["password"] = backend_password
-            elif local_password is not None and local_password != "none":
-                # Local a un password
+            # Timestamps de modification
+            local_pw_updated_at = pjlink_local.get("_password_updated_at") if isinstance(pjlink_local, dict) else None
+            backend_pw_updated_at = pjlink_backend.get("_password_updated_at") if isinstance(pjlink_backend, dict) else None
+
+            # Décider quelle version utiliser
+            use_local_pw = False
+            if local_pw_updated_at and backend_pw_updated_at:
+                use_local_pw = local_pw_updated_at > backend_pw_updated_at
+            elif local_pw_updated_at and not backend_pw_updated_at:
+                use_local_pw = True
+            elif local_password is not None and backend_password is None:
+                use_local_pw = True
+
+            if use_local_pw and local_password is not None and local_password != "none":
                 pjlink_merged["password"] = local_password
+                pjlink_merged["_password_updated_at"] = local_pw_updated_at
+                print(f"  💾 {ip}: Using local PJLink password (modified {local_pw_updated_at})")
+            elif backend_password is not None and backend_password != "none":
+                pjlink_merged["password"] = backend_password
+                if backend_pw_updated_at:
+                    pjlink_merged["_password_updated_at"] = backend_pw_updated_at
             else:
-                # Pas de password
                 pjlink_merged["password"] = ""
 
             device = {

@@ -434,6 +434,31 @@ def update_device(
 
     for d in devices:
         if (d.get("ip") or "").strip() == original_ip:
+            # Vérifier si community ou password ont changé pour ajouter timestamps
+            old_snmp = d.get("snmp", {})
+            old_pjlink = d.get("pjlink", {})
+
+            old_community = old_snmp.get("community") if isinstance(old_snmp, dict) else None
+            new_community = snmp_block.get("community")
+
+            old_password = old_pjlink.get("password") if isinstance(old_pjlink, dict) else None
+            new_password = pj_block.get("password")
+
+            # Ajouter timestamp si valeur modifiée
+            if new_community and new_community != old_community:
+                from datetime import datetime, timezone
+                snmp_block["_community_updated_at"] = datetime.now(timezone.utc).isoformat()
+            elif old_snmp.get("_community_updated_at"):
+                # Préserver le timestamp existant si pas modifié
+                snmp_block["_community_updated_at"] = old_snmp["_community_updated_at"]
+
+            if new_password != old_password:  # Comparer même si vide (changement volontaire)
+                from datetime import datetime, timezone
+                pj_block["_password_updated_at"] = datetime.now(timezone.utc).isoformat()
+            elif old_pjlink.get("_password_updated_at"):
+                # Préserver le timestamp existant si pas modifié
+                pj_block["_password_updated_at"] = old_pjlink["_password_updated_at"]
+
             d["ip"] = ip
             d["name"] = (name or "").strip()
             d["building"] = (building or "").strip()
