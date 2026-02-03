@@ -441,6 +441,12 @@ def update_device(
             old_community = old_snmp.get("community") if isinstance(old_snmp, dict) else None
             new_community = snmp_block.get("community")
 
+            print(f"🔍 DEBUG edit device {original_ip}:")
+            print(f"   driver: {driver}")
+            print(f"   old_community: '{old_community}'")
+            print(f"   new_community: '{new_community}'")
+            print(f"   Sont différents? {new_community != old_community}")
+
             old_password = old_pjlink.get("password") if isinstance(old_pjlink, dict) else None
             new_password = pj_block.get("password")
 
@@ -448,9 +454,13 @@ def update_device(
             if new_community and new_community != old_community:
                 from datetime import datetime, timezone
                 snmp_block["_community_updated_at"] = datetime.now(timezone.utc).isoformat()
+                print(f"   ✅ Timestamp SNMP ajouté: {snmp_block['_community_updated_at']}")
             elif old_snmp.get("_community_updated_at"):
                 # Préserver le timestamp existant si pas modifié
                 snmp_block["_community_updated_at"] = old_snmp["_community_updated_at"]
+                print(f"   ♻️  Timestamp SNMP préservé: {snmp_block['_community_updated_at']}")
+            else:
+                print(f"   ⚠️  Pas de timestamp SNMP ajouté (condition non remplie)")
 
             if new_password != old_password:  # Comparer même si vide (changement volontaire)
                 from datetime import datetime, timezone
