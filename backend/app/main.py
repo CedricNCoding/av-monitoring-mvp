@@ -982,6 +982,10 @@ def update_device_from_backend(
     device.driver = driver
     device.driver_config = driver_config
 
+    # IMPORTANT: Flag le champ JSONB comme modifié pour forcer SQLAlchemy à persister
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(device, "driver_config")
+
     # Mettre à jour le timestamp global si la config driver a changé
     snmp_ts = driver_config.get("snmp", {}).get("_community_updated_at") if driver_config.get("snmp") else None
     pjlink_ts = driver_config.get("pjlink", {}).get("_password_updated_at") if driver_config.get("pjlink") else None
@@ -2169,11 +2173,15 @@ def api_update_device(
                 current_config["pjlink"]["_password_updated_at"] = existing_pjlink["_password_updated_at"]
 
         device.driver_config = current_config
+        # IMPORTANT: Flag le champ JSONB comme modifié pour forcer SQLAlchemy à persister
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(device, "driver_config")
         print(f"   ✅ Nouveau driver_config: {device.driver_config}")
     else:
         print(f"   ⚠️  Pas de driver_config dans le payload!")
 
     db.commit()
+    db.refresh(device)  # Recharger depuis la DB pour vérifier
     print(f"   💾 Commit effectué, driver_config final en DB: {device.driver_config}")
     return {"success": True}
 
