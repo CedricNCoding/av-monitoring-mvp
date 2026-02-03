@@ -470,7 +470,7 @@
         <tbody>
           {% for zdev in zigbee_devices %}
           <tr>
-            <td><strong>{{ zdev.friendly_name }}</strong></td>
+            <td><strong><a href="/zigbee/device/{{ zdev.friendly_name }}" style="color: var(--primary); text-decoration: none;">{{ zdev.friendly_name }}</a></strong></td>
             <td><code style="font-size: 11px;">{{ zdev.ieee_address[:16] }}...</code></td>
             <td><span class="muted">{{ zdev.type }}</span></td>
             <td class="muted">

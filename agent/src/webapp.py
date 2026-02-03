@@ -624,6 +624,85 @@ def zigbee_assign_room(
     return RedirectResponse("/", status_code=303)
 
 
+@app.get("/zigbee/device/{friendly_name}")
+def zigbee_device_details(request: Request, friendly_name: str):
+    """Page de détails d'un device Zigbee avec états et actions."""
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+
+        # Récupérer l'état actuel depuis le cache MQTT
+        state = mqtt.get_device_state(friendly_name)
+
+        # Récupérer la config du device si elle existe
+        cfg = load_config(CONFIG_PATH)
+        device_config = None
+        for dev in cfg.get("devices", []):
+            if dev.get("ip") == f"zigbee:{friendly_name}":
+                device_config = dev
+                break
+
+        # Récupérer les infos depuis bridge/devices
+        bridge_devices = mqtt.get_bridge_devices()
+        device_info = None
+        for dev in bridge_devices:
+            if dev.get("friendly_name") == friendly_name:
+                device_info = dev
+                break
+
+        return templates.TemplateResponse(
+            "zigbee_device.html",
+            {
+                "request": request,
+                "friendly_name": friendly_name,
+                "state": state or {},
+                "device_config": device_config,
+                "device_info": device_info,
+                "mqtt_connected": mqtt.is_connected(),
+            },
+        )
+    except Exception as e:
+        print(f"⚠️  Device details failed: {e}")
+        return RedirectResponse("/", status_code=303)
+
+
+@app.post("/zigbee/device/{friendly_name}/action")
+def zigbee_device_action(
+    request: Request,
+    friendly_name: str,
+    action: str = Form(...),
+    value: str = Form(None)
+):
+    """Exécute une action sur un device Zigbee (ON/OFF, brightness, etc.)."""
+    try:
+        from src.mqtt_client import get_mqtt_manager
+        mqtt = get_mqtt_manager()
+
+        # Construire le payload selon l'action
+        payload = {}
+        if action == "toggle":
+            payload = {"state": "TOGGLE"}
+        elif action == "on":
+            payload = {"state": "ON"}
+        elif action == "off":
+            payload = {"state": "OFF"}
+        elif action == "brightness" and value:
+            payload = {"brightness": int(value)}
+        elif action == "color_temp" and value:
+            payload = {"color_temp": int(value)}
+        else:
+            payload = {action: value}
+
+        # Publier l'action
+        mqtt.publish_action(friendly_name, payload)
+
+    except Exception as e:
+        print(f"⚠️  Device action failed: {e}")
+
+    # Rediriger vers la page de détails du device
+    return RedirectResponse(f"/zigbee/device/{friendly_name}", status_code=303)
+
+
 @app.post("/zigbee/remove")
 def zigbee_remove(ieee_address: str = Form(...)):
     """Supprime un device du réseau Zigbee."""

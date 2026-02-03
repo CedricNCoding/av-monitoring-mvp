@@ -413,6 +413,10 @@ class MQTTClientManager:
             print(f"MQTT: Error reading bridge devices: {e}")
             return []
 
+    def get_bridge_devices(self) -> List[Dict[str, Any]]:
+        """Alias de get_all_devices() pour compatibilité."""
+        return self.get_all_devices()
+
     def publish_action(self, friendly_name: str, action: Dict[str, Any]) -> bool:
         """
         Publie une action sur un device (ex: ON/OFF).

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zigbee Device - {{ friendly_name }}</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding: 24px; line-height: 1.4; }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: var(--text-main); }
+    h2 { font-size: 18px; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 16px; margin-top: 24px; margin-bottom: 12px; color: var(--text-muted); }
+
+    .container { max-width: 900px; margin: 0 auto; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: var(--primary); text-decoration: none; font-weight: 600; }
+    .back-link:hover { text-decoration: underline; }
+
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: stretch; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+    .badge.online { background: #dcfce7; color: #166534; }
+    .badge.offline { background: #fee2e2; color: #991b1b; }
+    .badge.unknown { background: #f3f4f6; color: #6b7280; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+    .metric-item { background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+    .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+    .metric-value { font-size: 20px; font-weight: 700; color: var(--text-main); }
+    .metric-unit { font-size: 14px; color: var(--text-muted); margin-left: 4px; }
+
+    button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; font-size: 14px; }
+    button:hover { opacity: 0.9; }
+    button.secondary { background: #64748b; }
+    button.danger { background: var(--danger); }
+    button.success { background: var(--success); }
+    button.large { padding: 16px 32px; font-size: 16px; }
+
+    .action-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .info-table { width: 100%; margin-top: 12px; }
+    .info-table td { padding: 8px 0; }
+    .info-table td:first-child { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; width: 40%; }
+    .info-table td:last-child { font-weight: 600; }
+
+    code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; color: var(--primary); font-size: 0.9em; }
+    .muted { color: var(--text-muted); font-size: 12px; }
+
+    .warning-box { background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 12px; margin-top: 16px; }
+    .warning-box strong { color: #92400e; }
+
+    .state-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    .state-indicator.on { background: var(--success); }
+    .state-indicator.off { background: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <a href="/" class="back-link">← Retour à l'administration</a>
+
+    <h1>📡 {{ friendly_name }}</h1>
+
+    {% if not mqtt_connected %}
+    <div class="warning-box">
+      <strong>⚠ MQTT déconnecté</strong> - Impossible de récupérer l'état actuel du device ou d'envoyer des commandes.
+    </div>
+    {% endif %}
+
+    <div class="row">
+      <!-- État actuel -->
+      <div class="card">
+        <h2>État actuel</h2>
+
+        {% if state %}
+          {% if state.get('state') %}
+          <div style="margin-bottom: 20px;">
+            <span class="state-indicator {{ 'on' if state.state == 'ON' else 'off' }}"></span>
+            <span style="font-size: 18px; font-weight: 700;">{{ state.state }}</span>
+          </div>
+          {% endif %}
+
+          <div class="metric-grid">
+            {% if state.get('battery') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Batterie</div>
+              <div class="metric-value">{{ state.battery }}<span class="metric-unit">%</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('linkquality') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Qualité Signal</div>
+              <div class="metric-value">{{ state.linkquality }}</div>
+            </div>
+            {% endif %}
+
+            {% if state.get('temperature') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Température</div>
+              <div class="metric-value">{{ "%.1f"|format(state.temperature) }}<span class="metric-unit">°C</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('humidity') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Humidité</div>
+              <div class="metric-value">{{ "%.1f"|format(state.humidity) }}<span class="metric-unit">%</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('co2') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">CO₂</div>
+              <div class="metric-value">{{ state.co2 }}<span class="metric-unit">ppm</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('illuminance') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Luminosité</div>
+              <div class="metric-value">{{ state.illuminance }}<span class="metric-unit">lux</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('pressure') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Pression</div>
+              <div class="metric-value">{{ state.pressure }}<span class="metric-unit">hPa</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('occupancy') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Occupation</div>
+              <div class="metric-value">{{ "Oui" if state.occupancy else "Non" }}</div>
+            </div>
+            {% endif %}
+
+            {% if state.get('contact') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Contact</div>
+              <div class="metric-value">{{ "Fermé" if state.contact else "Ouvert" }}</div>
+            </div>
+            {% endif %}
+
+            {% if state.get('water_leak') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Fuite d'eau</div>
+              <div class="metric-value" style="color: {{ 'var(--danger)' if state.water_leak else 'inherit' }}">{{ "DÉTECTÉE" if state.water_leak else "Non" }}</div>
+            </div>
+            {% endif %}
+
+            {% if state.get('brightness') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Luminosité</div>
+              <div class="metric-value">{{ state.brightness }}<span class="metric-unit">/254</span></div>
+            </div>
+            {% endif %}
+
+            {% if state.get('color_temp') is not none %}
+            <div class="metric-item">
+              <div class="metric-label">Temp. Couleur</div>
+              <div class="metric-value">{{ state.color_temp }}<span class="metric-unit">K</span></div>
+            </div>
+            {% endif %}
+          </div>
+
+          {% if state.get('last_seen') %}
+          <p class="muted" style="margin-top: 16px;">Dernière activité : {{ state.last_seen }}</p>
+          {% endif %}
+
+        {% else %}
+          <p class="muted">Aucune donnée disponible pour ce device.</p>
+        {% endif %}
+      </div>
+
+      <!-- Actions -->
+      <div class="card">
+        <h2>Actions</h2>
+
+        {% if mqtt_connected and state %}
+          {% if state.get('state') is not none %}
+          <h3>Contrôle ON/OFF</h3>
+          <div class="action-buttons">
+            <form method="post" action="/zigbee/device/{{ friendly_name }}/action" style="display: inline;">
+              <input type="hidden" name="action" value="on">
+              <button type="submit" class="success large">🔆 ON</button>
+            </form>
+            <form method="post" action="/zigbee/device/{{ friendly_name }}/action" style="display: inline;">
+              <input type="hidden" name="action" value="off">
+              <button type="submit" class="secondary large">🔅 OFF</button>
+            </form>
+            <form method="post" action="/zigbee/device/{{ friendly_name }}/action" style="display: inline;">
+              <input type="hidden" name="action" value="toggle">
+              <button type="submit" class="large">🔄 Toggle</button>
+            </form>
+          </div>
+          {% endif %}
+
+          {% if state.get('brightness') is not none %}
+          <h3>Luminosité</h3>
+          <form method="post" action="/zigbee/device/{{ friendly_name }}/action" style="margin-top: 12px;">
+            <input type="hidden" name="action" value="brightness">
+            <input type="range" name="value" min="0" max="254" value="{{ state.brightness }}" style="width: 100%;">
+            <button type="submit" style="margin-top: 8px;">Ajuster</button>
+          </form>
+          {% endif %}
+
+          {% if state.get('color_temp') is not none %}
+          <h3>Température de couleur</h3>
+          <form method="post" action="/zigbee/device/{{ friendly_name }}/action" style="margin-top: 12px;">
+            <input type="hidden" name="action" value="color_temp">
+            <input type="range" name="value" min="150" max="500" value="{{ state.color_temp }}" style="width: 100%;">
+            <button type="submit" style="margin-top: 8px;">Ajuster</button>
+          </form>
+          {% endif %}
+
+        {% elif not mqtt_connected %}
+          <p class="muted">MQTT déconnecté - actions indisponibles</p>
+        {% else %}
+          <p class="muted">Aucune action disponible pour ce type de device.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Informations techniques -->
+    <div class="card" style="margin-top: 20px;">
+      <h2>Informations techniques</h2>
+
+      <table class="info-table">
+        <tr>
+          <td>Friendly Name</td>
+          <td><code>{{ friendly_name }}</code></td>
+        </tr>
+        {% if device_info %}
+          {% if device_info.get('ieee_address') %}
+          <tr>
+            <td>IEEE Address</td>
+            <td><code>{{ device_info.ieee_address }}</code></td>
+          </tr>
+          {% endif %}
+          {% if device_info.get('model_id') %}
+          <tr>
+            <td>Modèle</td>
+            <td>{{ device_info.model_id }}</td>
+          </tr>
+          {% endif %}
+          {% if device_info.get('manufacturer') %}
+          <tr>
+            <td>Fabricant</td>
+            <td>{{ device_info.manufacturer }}</td>
+          </tr>
+          {% endif %}
+          {% if device_info.get('definition') and device_info.definition.get('description') %}
+          <tr>
+            <td>Description</td>
+            <td>{{ device_info.definition.description }}</td>
+          </tr>
+          {% endif %}
+        {% endif %}
+        {% if device_config %}
+          {% if device_config.get('building') or device_config.get('floor') or device_config.get('room') %}
+          <tr>
+            <td>Localisation</td>
+            <td>
+              {% if device_config.building %}{{ device_config.building }}{% endif %}
+              {% if device_config.floor %} - Étage {{ device_config.floor }}{% endif %}
+              {% if device_config.room %} - {{ device_config.room }}{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+        {% endif %}
+      </table>
+    </div>
+
+  </div>
+
+</body>
+</html>
