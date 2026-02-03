@@ -395,9 +395,16 @@ def push_device_config_to_backend(cfg: Dict[str, Any], device_ip: str) -> bool:
     snmp_config = device.get("snmp") or {}
     pjlink_config = device.get("pjlink") or {}
 
+    print(f"🔍 DEBUG push_device_config_to_backend for {device_ip}:")
+    print(f"   snmp_config: {snmp_config}")
+    print(f"   pjlink_config: {pjlink_config}")
+
     # Déterminer le timestamp le plus récent
     snmp_updated_at = snmp_config.get("_community_updated_at") if isinstance(snmp_config, dict) else None
     pjlink_updated_at = pjlink_config.get("_password_updated_at") if isinstance(pjlink_config, dict) else None
+
+    print(f"   snmp_updated_at: {snmp_updated_at}")
+    print(f"   pjlink_updated_at: {pjlink_updated_at}")
 
     # Prendre le plus récent des deux
     updated_at = None
@@ -407,6 +414,8 @@ def push_device_config_to_backend(cfg: Dict[str, Any], device_ip: str) -> bool:
         updated_at = snmp_updated_at
     elif pjlink_updated_at:
         updated_at = pjlink_updated_at
+
+    print(f"   updated_at final: {updated_at}")
 
     if not updated_at:
         print(f"⚠️  No timestamp found for {device_ip}, skipping push")
