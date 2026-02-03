@@ -2093,9 +2093,16 @@ def api_update_device(
     """
     Met à jour un équipement existant.
     """
+    # DEBUG: Log du payload reçu
+    print(f"🔍 API PUT /api/devices/{device_id}")
+    print(f"   Payload reçu: {device_data}")
+
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+
+    print(f"   Device actuel driver: {device.driver}")
+    print(f"   Device actuel driver_config: {device.driver_config}")
 
     # Mettre à jour les champs modifiables
     if "name" in device_data:
@@ -2117,9 +2124,12 @@ def api_update_device(
     if "driver_config" in device_data:
         incoming_config = device_data["driver_config"]
         current_config = _as_dict(device.driver_config or {})
+        print(f"   📝 driver_config trouvé dans payload: {incoming_config}")
+        print(f"   📋 current_config avant merge: {current_config}")
 
         # Normaliser la structure : {community: "x"} -> {snmp: {community: "x"}}
         if device.driver == "snmp" and "community" in incoming_config:
+            print(f"   🔧 Processing SNMP config...")
             # Structure plate reçue du frontend, normaliser en structure imbriquée
             existing_snmp = current_config.get("snmp", {})
             old_community = existing_snmp.get("community") if isinstance(existing_snmp, dict) else None
@@ -2159,8 +2169,12 @@ def api_update_device(
                 current_config["pjlink"]["_password_updated_at"] = existing_pjlink["_password_updated_at"]
 
         device.driver_config = current_config
+        print(f"   ✅ Nouveau driver_config: {device.driver_config}")
+    else:
+        print(f"   ⚠️  Pas de driver_config dans le payload!")
 
     db.commit()
+    print(f"   💾 Commit effectué, driver_config final en DB: {device.driver_config}")
     return {"success": True}
 
 

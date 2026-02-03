@@ -1972,6 +1972,9 @@
               driver_config: driver_config
             };
 
+            console.log('🚀 Envoi du payload:', payload);
+            console.log('📝 driver_config envoyé:', driver_config);
+
             const response = await fetch(`/api/devices/${this.editModal.device.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
