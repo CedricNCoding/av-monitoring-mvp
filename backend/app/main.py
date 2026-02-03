@@ -2113,6 +2113,53 @@ def api_update_device(
     if "room" in device_data:
         device.room = device_data["room"].strip()
 
+    # Gérer driver_config (SNMP, PJLink)
+    if "driver_config" in device_data:
+        incoming_config = device_data["driver_config"]
+        current_config = _as_dict(device.driver_config or {})
+
+        # Normaliser la structure : {community: "x"} -> {snmp: {community: "x"}}
+        if device.driver == "snmp" and "community" in incoming_config:
+            # Structure plate reçue du frontend, normaliser en structure imbriquée
+            existing_snmp = current_config.get("snmp", {})
+            old_community = existing_snmp.get("community") if isinstance(existing_snmp, dict) else None
+            new_community = incoming_config.get("community")
+
+            current_config["snmp"] = {
+                "community": new_community or "public",
+                "port": incoming_config.get("port", 161),
+                "timeout_s": incoming_config.get("timeout_s", 1),
+                "retries": incoming_config.get("retries", 1),
+            }
+
+            # Ajouter timestamp si community a changé
+            if new_community and new_community != old_community:
+                current_config["snmp"]["_community_updated_at"] = _now_utc().isoformat()
+                device.driver_config_updated_at = _now_utc()
+            elif existing_snmp.get("_community_updated_at"):
+                current_config["snmp"]["_community_updated_at"] = existing_snmp["_community_updated_at"]
+
+        elif device.driver == "pjlink" and "password" in incoming_config:
+            # Structure plate reçue du frontend, normaliser en structure imbriquée
+            existing_pjlink = current_config.get("pjlink", {})
+            old_password = existing_pjlink.get("password") if isinstance(existing_pjlink, dict) else None
+            new_password = incoming_config.get("password", "")
+
+            current_config["pjlink"] = {
+                "password": new_password,
+                "port": incoming_config.get("port", 4352),
+                "timeout_s": incoming_config.get("timeout_s", 2),
+            }
+
+            # Ajouter timestamp si password a changé
+            if new_password != old_password:
+                current_config["pjlink"]["_password_updated_at"] = _now_utc().isoformat()
+                device.driver_config_updated_at = _now_utc()
+            elif existing_pjlink.get("_password_updated_at"):
+                current_config["pjlink"]["_password_updated_at"] = existing_pjlink["_password_updated_at"]
+
+        device.driver_config = current_config
+
     db.commit()
     return {"success": True}
 
