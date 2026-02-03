@@ -186,7 +186,7 @@ if [ -f "$BACKEND_DIR/backend/app/database.py" ] && [ -f "$BACKEND_DIR/backend/a
     source venv/bin/activate
 
     python3 <<EOF
-from app.database import engine, Base
+from app.db import engine, Base
 from app.models import Site, Device, Observation
 import sys
 

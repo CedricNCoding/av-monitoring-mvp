@@ -133,7 +133,7 @@ cd /opt/av-monitoring-mvp/backend
 source venv/bin/activate
 
 python3 <<EOF
-from app.database import engine, Base
+from app.db import engine, Base
 from app.models import Site, Device, Observation
 
 Base.metadata.create_all(engine)
@@ -352,7 +352,7 @@ EOF
 # Recréer les tables
 cd /opt/av-monitoring-mvp/backend
 source venv/bin/activate
-python3 -c "from app.database import engine, Base; from app.models import *; Base.metadata.create_all(engine)"
+python3 -c "from app.db import engine, Base; from app.models import *; Base.metadata.create_all(engine)"
 
 # Appliquer les migrations
 sudo -u postgres psql -d avmvp_db -f migrations/add_driver_config_updated_at.sql
