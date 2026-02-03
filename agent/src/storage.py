@@ -219,6 +219,10 @@ def _normalize_driver_blocks(device: Dict[str, Any]) -> None:
             "timeout_s": max(1, _as_int(snmp.get("timeout_s"), 1)),
             "retries": max(0, _as_int(snmp.get("retries"), 1)),
         }
+        # Préserver les timestamps (clés commençant par underscore)
+        for key, value in snmp.items():
+            if key.startswith("_"):
+                snmp_out[key] = value
         device["snmp"] = snmp_out
     else:
         device["snmp"] = {}
@@ -241,6 +245,10 @@ def _normalize_driver_blocks(device: Dict[str, Any]) -> None:
             "port": max(1, _as_int(pj.get("port"), 4352)),
             "timeout_s": max(1, _as_int(pj.get("timeout_s"), 2)),
         }
+        # Préserver les timestamps (clés commençant par underscore)
+        for key, value in pj.items():
+            if key.startswith("_"):
+                pj_out[key] = value
         device["pjlink"] = pj_out
     else:
         device["pjlink"] = {}
