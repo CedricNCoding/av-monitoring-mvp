@@ -342,6 +342,112 @@ def sync_config_from_backend(cfg: Dict[str, Any]) -> bool:
 
 
 # -------------------------------------------------------------------
+# Push de configuration vers le backend
+# -------------------------------------------------------------------
+def push_device_config_to_backend(cfg: Dict[str, Any], device_ip: str) -> bool:
+    """
+    Pousse la configuration driver d'un device vers le backend.
+
+    Args:
+        cfg: Configuration locale complète
+        device_ip: IP du device à synchroniser
+
+    Returns:
+        True si le push a réussi, False sinon
+    """
+    # Support both "backend_url" (new) and "api_url" (legacy)
+    backend_url = (cfg.get("backend_url") or "").strip()
+    api_url_legacy = (cfg.get("api_url") or "").strip()
+
+    if backend_url and "CHANGE_ME" not in backend_url and "example.com" not in backend_url:
+        api_url = backend_url
+    else:
+        api_url = api_url_legacy
+
+    site_token = (cfg.get("site_token") or "").strip()
+
+    if not api_url or not site_token:
+        print(f"⚠️  Push config skipped for {device_ip}: missing backend_url or site_token")
+        return False
+
+    # Construire l'URL du PATCH endpoint
+    if "/ingest" in api_url:
+        base_url = api_url.replace("/ingest", "")
+    else:
+        from urllib.parse import urlparse
+        parsed = urlparse(api_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    patch_url = f"{base_url}/config/{site_token}/device/{device_ip}"
+
+    # Trouver le device dans la config
+    device = None
+    for dev in cfg.get("devices", []):
+        if dev.get("ip") == device_ip:
+            device = dev
+            break
+
+    if not device:
+        print(f"⚠️  Device {device_ip} not found in local config")
+        return False
+
+    # Extraire driver_config avec timestamps
+    snmp_config = device.get("snmp") or {}
+    pjlink_config = device.get("pjlink") or {}
+
+    # Déterminer le timestamp le plus récent
+    snmp_updated_at = snmp_config.get("_community_updated_at") if isinstance(snmp_config, dict) else None
+    pjlink_updated_at = pjlink_config.get("_password_updated_at") if isinstance(pjlink_config, dict) else None
+
+    # Prendre le plus récent des deux
+    updated_at = None
+    if snmp_updated_at and pjlink_updated_at:
+        updated_at = max(snmp_updated_at, pjlink_updated_at)
+    elif snmp_updated_at:
+        updated_at = snmp_updated_at
+    elif pjlink_updated_at:
+        updated_at = pjlink_updated_at
+
+    if not updated_at:
+        print(f"⚠️  No timestamp found for {device_ip}, skipping push")
+        return False
+
+    # Construire le payload
+    payload = {
+        "driver_config": {
+            "snmp": snmp_config,
+            "pjlink": pjlink_config,
+        },
+        "updated_at": updated_at,
+    }
+
+    try:
+        print(f"🔄 Pushing config for {device_ip} to backend (updated at {updated_at})...")
+        r = requests.patch(patch_url, json=payload, timeout=10)
+        r.raise_for_status()
+        result = r.json()
+
+        if result.get("ok"):
+            print(f"✅ Config pushed successfully for {device_ip}")
+            return True
+        else:
+            reason = result.get("reason", "unknown")
+            if reason == "backend_version_newer":
+                print(f"ℹ️  Backend has newer version for {device_ip}, local change rejected")
+            else:
+                print(f"⚠️  Push rejected for {device_ip}: {reason}")
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Push failed for {device_ip} (network): {e.__class__.__name__}: {e}")
+        return False
+
+    except Exception as e:
+        print(f"⚠️  Push failed for {device_ip}: {e.__class__.__name__}: {e}")
+        return False
+
+
+# -------------------------------------------------------------------
 # Loop de synchronisation périodique
 # -------------------------------------------------------------------
 def run_sync_loop(stop_flag: Dict[str, bool], interval_minutes: int = 5) -> None:

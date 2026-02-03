@@ -477,6 +477,11 @@ def update_device(
 
     cfg["devices"] = devices
     save_config(CONFIG_PATH, cfg)
+
+    # Push la configuration vers le backend (sync bidirectionnelle)
+    from src.config_sync import push_device_config_to_backend
+    push_device_config_to_backend(cfg, ip)
+
     return RedirectResponse("/", status_code=303)
 
 

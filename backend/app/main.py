@@ -670,6 +670,7 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
             "snmp": snmp_config,
             "pjlink": pjlink_config,
             "expectations": expectations,
+            "driver_config_updated_at": d.driver_config_updated_at.isoformat() if d.driver_config_updated_at else None,
         }
         devices_config.append(device_data)
 
@@ -686,6 +687,79 @@ def get_config(site_token: str, db: Session = Depends(get_db)):
     }
 
     return response
+
+
+@app.patch("/config/{site_token}/device/{device_ip}")
+def update_device_config(
+    site_token: str,
+    device_ip: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint pour synchronisation push depuis l'agent.
+
+    L'agent envoie les modifications de driver_config (SNMP community, PJLink password)
+    avec leurs timestamps. Le backend accepte uniquement si le timestamp agent est plus récent.
+
+    Payload exemple:
+    {
+        "driver_config": {
+            "snmp": {"community": "private", "_community_updated_at": "2026-02-03T14:30:00Z"},
+            "pjlink": {"password": "secret", "_password_updated_at": "2026-02-03T14:31:00Z"}
+        },
+        "updated_at": "2026-02-03T14:31:00Z"
+    }
+    """
+    site = db.query(Site).filter(Site.token == site_token).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Invalid site token")
+
+    device = (
+        db.query(Device)
+        .filter(Device.site_id == site.id)
+        .filter(Device.ip == device_ip)
+        .first()
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    incoming_driver_config = payload.get("driver_config")
+    incoming_updated_at_str = payload.get("updated_at")
+
+    if not incoming_driver_config or not incoming_updated_at_str:
+        raise HTTPException(status_code=400, detail="Missing driver_config or updated_at")
+
+    # Parser le timestamp
+    try:
+        from dateutil.parser import isoparse
+        incoming_updated_at = isoparse(incoming_updated_at_str)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid timestamp format: {e}")
+
+    # Comparer avec le timestamp actuel en base
+    current_updated_at = device.driver_config_updated_at
+
+    # Si backend plus récent, refuser
+    if current_updated_at and current_updated_at >= incoming_updated_at:
+        return {
+            "ok": False,
+            "reason": "backend_version_newer",
+            "backend_updated_at": current_updated_at.isoformat(),
+            "agent_updated_at": incoming_updated_at.isoformat(),
+        }
+
+    # Accepter la modification
+    device.driver_config = incoming_driver_config
+    device.driver_config_updated_at = incoming_updated_at
+    db.commit()
+
+    print(f"✅ Config pushed from agent for {device_ip} (updated at {incoming_updated_at.isoformat()})")
+
+    return {
+        "ok": True,
+        "updated_at": incoming_updated_at.isoformat(),
+    }
 
 
 # ------------------------------------------------------------

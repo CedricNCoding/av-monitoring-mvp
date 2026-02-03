@@ -59,6 +59,7 @@ class Device(Base):
 
     # Configuration des drivers (SNMP, PJLink, etc.)
     driver_config = Column(JSONB, nullable=False, default=dict)
+    driver_config_updated_at = Column(DateTime(timezone=True), nullable=True)
 
     # Expectations et scheduling
     expectations = Column(JSONB, nullable=False, default=dict)
