@@ -87,12 +87,15 @@ echo -e "${GREEN}✓${NC} Fichier .env créé"
 echo ""
 echo -e "${BLUE}[5/8]${NC} Création tables base de données..."
 cd "$BACKEND_DIR"
-./venv/bin/python3 -c "
+export PYTHONPATH="$BACKEND_DIR:$PYTHONPATH"
+./venv/bin/python3 << 'PYEOF'
+import sys
+sys.path.insert(0, '/opt/av-monitoring-mvp/backend')
 from app.database import engine, Base
 from app.models import Site, Device, Observation
 Base.metadata.create_all(engine)
 print('Tables créées avec succès')
-"
+PYEOF
 echo -e "${GREEN}✓${NC} Tables créées"
 
 # 6. Migrations
