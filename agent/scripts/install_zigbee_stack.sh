@@ -542,10 +542,18 @@ install_zigbee2mqtt() {
         apt-get install -y git
     fi
 
-    # Créer user système
+    # Créer user système avec groupe
     if ! id -u zigbee2mqtt &> /dev/null; then
-        useradd --system --no-create-home --shell /usr/sbin/nologin zigbee2mqtt
+        useradd --system --no-create-home --shell /usr/sbin/nologin --user-group zigbee2mqtt
         echo -e "${GREEN}✓${NC} User système 'zigbee2mqtt' créé"
+    else
+        # Vérifier que le groupe existe aussi
+        if ! getent group zigbee2mqtt &> /dev/null; then
+            groupadd --system zigbee2mqtt
+            usermod -g zigbee2mqtt zigbee2mqtt
+            echo -e "${GREEN}✓${NC} Groupe 'zigbee2mqtt' créé et assigné"
+        fi
+        echo -e "${GREEN}✓${NC} User système 'zigbee2mqtt' existe déjà"
     fi
 
     # Clone repository
@@ -618,6 +626,11 @@ EOF
 
     chown zigbee2mqtt:zigbee2mqtt "$CONFIG_FILE"
     chmod 640 "$CONFIG_FILE"
+
+    # Re-synchroniser le mot de passe MQTT pour Zigbee2MQTT (au cas où)
+    echo "Synchronisation du mot de passe MQTT pour zigbee2mqtt..."
+    mosquitto_passwd -b /etc/mosquitto/passwd zigbee2mqtt "${MQTT_PASS_Z2M}"
+    echo -e "${GREEN}✓${NC} Mot de passe MQTT synchronisé"
 
     echo -e "${GREEN}✓${NC} Zigbee2MQTT configuré"
 }

@@ -327,12 +327,18 @@ class MQTTClientManager:
     def is_connected(self) -> bool:
         """
         Vérifie si le client MQTT est connecté.
+        Tente une connexion automatique si pas encore connecté.
 
         Returns:
             bool: True si connecté
         """
         if not MQTT_AVAILABLE:
             return False
+
+        # Lazy connection: tenter de se connecter si pas encore fait
+        if not self._connected and not self._connection_attempted:
+            self._ensure_connected()
+
         return self._connected
 
     def get_device_state(self, friendly_name: str) -> Optional[Dict[str, Any]]:
