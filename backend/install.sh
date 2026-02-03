@@ -96,7 +96,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.db import engine, Base
-from app.models import Site, Device, Observation
+from app.models import *
 Base.metadata.create_all(engine)
 print('Tables créées avec succès')
 PYEOF

@@ -134,7 +134,7 @@ source venv/bin/activate
 
 python3 <<EOF
 from app.db import engine, Base
-from app.models import Site, Device, Observation
+from app.models import *
 
 Base.metadata.create_all(engine)
 print("✓ Tables créées")

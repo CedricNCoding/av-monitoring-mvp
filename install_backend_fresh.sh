@@ -187,7 +187,7 @@ if [ -f "$BACKEND_DIR/backend/app/database.py" ] && [ -f "$BACKEND_DIR/backend/a
 
     python3 <<EOF
 from app.db import engine, Base
-from app.models import Site, Device, Observation
+from app.models import *
 import sys
 
 try:
