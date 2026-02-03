@@ -1914,15 +1914,15 @@
 
           // Extract SNMP config if present
           if (deviceCopy.driver_config) {
-            if (deviceCopy.driver === 'snmp') {
-              deviceCopy.snmp_community = deviceCopy.driver_config.community || 'public';
-              deviceCopy.snmp_port = deviceCopy.driver_config.port || 161;
-              deviceCopy.snmp_timeout_s = deviceCopy.driver_config.timeout_s || 1;
-              deviceCopy.snmp_retries = deviceCopy.driver_config.retries || 1;
-            } else if (deviceCopy.driver === 'pjlink') {
-              deviceCopy.pjlink_password = deviceCopy.driver_config.password || '';
-              deviceCopy.pjlink_port = deviceCopy.driver_config.port || 4352;
-              deviceCopy.pjlink_timeout_s = deviceCopy.driver_config.timeout_s || 2;
+            if (deviceCopy.driver === 'snmp' && deviceCopy.driver_config.snmp) {
+              deviceCopy.snmp_community = deviceCopy.driver_config.snmp.community || 'public';
+              deviceCopy.snmp_port = deviceCopy.driver_config.snmp.port || 161;
+              deviceCopy.snmp_timeout_s = deviceCopy.driver_config.snmp.timeout_s || 1;
+              deviceCopy.snmp_retries = deviceCopy.driver_config.snmp.retries || 1;
+            } else if (deviceCopy.driver === 'pjlink' && deviceCopy.driver_config.pjlink) {
+              deviceCopy.pjlink_password = deviceCopy.driver_config.pjlink.password || '';
+              deviceCopy.pjlink_port = deviceCopy.driver_config.pjlink.port || 4352;
+              deviceCopy.pjlink_timeout_s = deviceCopy.driver_config.pjlink.timeout_s || 2;
             }
           } else {
             // Set defaults if no driver_config
