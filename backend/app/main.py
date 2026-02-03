@@ -736,29 +736,89 @@ def update_device_config(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid timestamp format: {e}")
 
-    # Comparer avec le timestamp actuel en base
-    current_updated_at = device.driver_config_updated_at
+    # Fusion granulaire : comparer SNMP et PJLink séparément
+    current_config = _as_dict(device.driver_config or {})
+    merged_config = dict(current_config)
+    config_changed = False
 
-    # Si backend plus récent, refuser
-    if current_updated_at and current_updated_at >= incoming_updated_at:
+    # SNMP : comparer les timestamps individuels
+    if "snmp" in incoming_driver_config:
+        incoming_snmp = incoming_driver_config["snmp"]
+        current_snmp = current_config.get("snmp", {})
+
+        incoming_snmp_ts = incoming_snmp.get("_community_updated_at")
+        current_snmp_ts = current_snmp.get("_community_updated_at")
+
+        # Garder le plus récent
+        if incoming_snmp_ts and current_snmp_ts:
+            if incoming_snmp_ts > current_snmp_ts:
+                merged_config["snmp"] = incoming_snmp
+                config_changed = True
+                print(f"  📡 SNMP: agent plus récent ({incoming_snmp_ts} > {current_snmp_ts})")
+            else:
+                print(f"  💾 SNMP: backend plus récent ({current_snmp_ts} >= {incoming_snmp_ts})")
+        elif incoming_snmp_ts:
+            # Agent a un timestamp, backend n'en a pas
+            merged_config["snmp"] = incoming_snmp
+            config_changed = True
+            print(f"  📡 SNMP: agent a un timestamp, backend non")
+        elif current_snmp_ts:
+            # Backend a un timestamp, agent non
+            print(f"  💾 SNMP: backend a un timestamp, agent non")
+        else:
+            # Aucun timestamp, prendre agent par défaut
+            merged_config["snmp"] = incoming_snmp
+            config_changed = True
+            print(f"  📡 SNMP: aucun timestamp, prise agent")
+
+    # PJLink : même logique
+    if "pjlink" in incoming_driver_config:
+        incoming_pjlink = incoming_driver_config["pjlink"]
+        current_pjlink = current_config.get("pjlink", {})
+
+        incoming_pjlink_ts = incoming_pjlink.get("_password_updated_at")
+        current_pjlink_ts = current_pjlink.get("_password_updated_at")
+
+        # Garder le plus récent
+        if incoming_pjlink_ts and current_pjlink_ts:
+            if incoming_pjlink_ts > current_pjlink_ts:
+                merged_config["pjlink"] = incoming_pjlink
+                config_changed = True
+                print(f"  📡 PJLink: agent plus récent ({incoming_pjlink_ts} > {current_pjlink_ts})")
+            else:
+                print(f"  💾 PJLink: backend plus récent ({current_pjlink_ts} >= {incoming_pjlink_ts})")
+        elif incoming_pjlink_ts:
+            merged_config["pjlink"] = incoming_pjlink
+            config_changed = True
+            print(f"  📡 PJLink: agent a un timestamp, backend non")
+        elif current_pjlink_ts:
+            print(f"  💾 PJLink: backend a un timestamp, agent non")
+        else:
+            merged_config["pjlink"] = incoming_pjlink
+            config_changed = True
+            print(f"  📡 PJLink: aucun timestamp, prise agent")
+
+    if config_changed:
+        device.driver_config = merged_config
+        device.driver_config_updated_at = incoming_updated_at
+        # IMPORTANT: Flag comme modifié pour persister
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(device, "driver_config")
+        db.commit()
+        print(f"✅ Config merged from agent for {device_ip} (updated at {incoming_updated_at.isoformat()})")
         return {
-            "ok": False,
-            "reason": "backend_version_newer",
-            "backend_updated_at": current_updated_at.isoformat(),
-            "agent_updated_at": incoming_updated_at.isoformat(),
+            "ok": True,
+            "updated_at": incoming_updated_at.isoformat(),
+            "merged": True,
         }
-
-    # Accepter la modification
-    device.driver_config = incoming_driver_config
-    device.driver_config_updated_at = incoming_updated_at
-    db.commit()
-
-    print(f"✅ Config pushed from agent for {device_ip} (updated at {incoming_updated_at.isoformat()})")
-
-    return {
-        "ok": True,
-        "updated_at": incoming_updated_at.isoformat(),
-    }
+    else:
+        print(f"ℹ️  No changes from agent for {device_ip} (backend already up-to-date)")
+        return {
+            "ok": True,
+            "updated_at": device.driver_config_updated_at.isoformat() if device.driver_config_updated_at else None,
+            "merged": False,
+            "reason": "backend_already_up_to_date",
+        }
 
 
 # ------------------------------------------------------------
