@@ -69,11 +69,13 @@ systemctl enable postgresql
 
 # Créer la base de données et l'utilisateur
 sudo -u postgres psql <<EOF
--- Créer l'utilisateur s'il n'existe pas
+-- Créer l'utilisateur s'il n'existe pas, sinon mettre à jour le mot de passe
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_user WHERE usename = '${DB_USER}') THEN
         CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
+    ELSE
+        ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
     END IF;
 END
 \$\$;
