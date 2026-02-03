@@ -432,7 +432,12 @@ def push_device_config_to_backend(cfg: Dict[str, Any], device_ip: str) -> bool:
 
     try:
         print(f"🔄 Pushing config for {device_ip} to backend (updated at {updated_at})...")
+        print(f"   URL: {patch_url}")
+        print(f"   Payload: {payload}")
         r = requests.patch(patch_url, json=payload, timeout=10)
+        print(f"   Response status: {r.status_code}")
+        if r.status_code != 200:
+            print(f"   Response body: {r.text}")
         r.raise_for_status()
         result = r.json()
 
