@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AV Monitoring — Hyperview</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.5);
+      --bg: #020617;
+      --card-bg: rgba(30, 41, 59, 0.5);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.4);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    body { 
+      font-family: 'Plus Jakarta Sans', sans-serif; 
+      background: radial-gradient(circle at top right, #1e293b 0%, #020617 100%);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; }
+
+    /* Topbar */
+    .topbar { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      margin-bottom: 40px; 
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { 
+      font-size: 28px; 
+      font-weight: 800; 
+      letter-spacing: -0.05em; 
+      margin: 0;
+      background: linear-gradient(to right, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links a { 
+      color: var(--text-muted); 
+      margin-left: 24px; 
+      text-decoration: none; 
+      font-weight: 600;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--primary); }
+
+    /* KPIs - Style "Glass metrics" */
+    .kpis { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
+      gap: 16px; 
+      margin-bottom: 40px; 
+    }
+    .kpi { 
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 20px; 
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi::after {
+        content: ""; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+        background: var(--primary); opacity: 0.3;
+    }
+    .kpi .muted { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: var(--text-muted); }
+    .kpi .v { font-size: 36px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+    /* Map Section */
+    .map-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 8px;
+      margin-bottom: 40px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    #map { 
+      height: 450px; 
+      border-radius: 18px; 
+      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); 
+    }
+
+    /* Grid & Cards */
+    .grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+      gap: 20px; 
+    }
+    .card { 
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 20px; 
+      padding: 24px;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(59, 130, 246, 0.5);
+      background: rgba(30, 41, 59, 0.7);
+    }
+
+    /* Status Pills & Badges */
+    .pill { 
+      padding: 6px 14px; 
+      border-radius: 10px; 
+      font-size: 11px; 
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .pill.danger { 
+        background: rgba(239, 68, 68, 0.15); 
+        color: #f87171; 
+        box-shadow: 0 0 15px var(--danger-glow);
+    }
+    .pill.ok { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      display: inline-block;
+    }
+    .badge.offline, .badge.fault { background: var(--danger); color: white; box-shadow: 0 0 10px var(--danger-glow); }
+    .badge.online, .badge.ok { background: var(--success); color: white; }
+
+    /* Table Section */
+    .events-section { margin-top: 50px; }
+    .table-wrap {
+      background: var(--card-bg);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: rgba(15, 23, 42, 0.8);
+      padding: 18px;
+      text-align: left;
+      font-size: 11px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    tbody td {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+    code {
+      background: rgba(0,0,0,0.3);
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: var(--primary);
+      font-size: 11px;
+    }
+
+    a.action-link {
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 13px;
+        transition: 0.2s;
+    }
+    a.action-link:hover { text-shadow: 0 0 8px var(--primary-glow); }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <h1>Exploitation AV</h1>
+        <div style="color: var(--text-muted); font-size: 14px; font-weight: 500;">Intelligence & Monitoring en temps réel</div>
+      </div>
+      <nav class="nav-links">
+        <a href="/ui/dashboard">Dashboard</a>
+        <a href="/ui/agents">Agents</a>
+      </nav>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="muted">Total Sites</div>
+        <div class="v">{{ kpis.total_sites }}</div>
+      </div>
+      <div class="kpi">
+        <div class="muted">Appareils</div>
+        <div class="v">{{ kpis.total_devices }}</div>
+      </div>
+      <div class="kpi" style="border-bottom: 2px solid var(--danger);">
+        <div class="muted">Offline</div>
+        <div class="v" style="color: var(--danger)">{{ kpis.offline_devices }}</div>
+      </div>
+      <div class="kpi">
+        <div class="muted">Faults</div>
+        <div class="v" style="color: var(--warning)">{{ kpis.faults }}</div>
+      </div>
+      <div class="kpi">
+        <div class="muted">Doubts</div>
+        <div class="v">{{ kpis.doubts }}</div>
+      </div>
+    </div>
+
+    <div class="map-card">
+      <div id="map"></div>
+    </div>
+
+    <h2 style="font-size: 20px; margin-bottom: 20px;">Sites Sous Surveillance</h2>
+    <div class="grid">
+      {% for s in site_cards %}
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+          <div>
+            <div style="font-weight:800; font-size: 18px; margin-bottom: 4px;">{{ s.name }}</div>
+            <div style="color: var(--text-muted); font-size: 13px;">{{ s.device_count }} nodes</div>
+          </div>
+          {% if s.offline_count > 0 %}
+            <span class="pill danger">ALERTE : {{ s.offline_count }}</span>
+          {% else %}
+            <span class="pill ok">Stable</span>
+          {% endif %}
+        </div>
+        
+        <div style="padding: 12px 0; border-top: 1px solid var(--border);">
+            <a href="/ui/agents/{{ s.id }}/devices" class="action-link">Ouvrir la console →</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if recent_events %}
+    <div class="events-section">
+      <h2 style="font-size: 20px; margin-bottom: 20px;">Flux d'événements</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date & Heure</th>
+              <th>Localisation</th>
+              <th>Équipement</th>
+              <th>État</th>
+              <th>Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ev in recent_events %}
+            <tr>
+              <td style="color: var(--text-muted); font-family: monospace; font-size: 12px;">
+                {{ ev.created_at[11:19] if ev.created_at else "—" }}
+              </td>
+              <td>
+                <div style="font-weight: 700; color: var(--text-main);">{{ ev.site_name }}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">{{ ev.room }}</div>
+              </td>
+              <td>
+                <div style="font-weight: 600;">{{ ev.device_name }}</div>
+                <code>{{ ev.ip }}</code>
+              </td>
+              <td>
+                <span class="badge {{ ev.status }}">{{ ev.status }}</span>
+              </td>
+              <td style="color: var(--text-muted); font-size: 13px;">
+                {{ ev.detail if ev.detail else "—" }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    // Initialisation Map Dark
+    const map = L.map('map', { zoomControl: false }).setView([46.6, 2.2], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    fetch('/api/sites/map-data')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.sites) return;
+        const markers = [];
+        data.sites.forEach(site => {
+          const color = site.devices_offline > 0 ? '#ef4444' : '#10b981';
+          const shadow = site.devices_offline > 0 ? '0 0 15px rgba(239, 68, 68, 0.6)' : 'none';
+          
+          const icon = L.divIcon({
+            className: 'custom-marker',
+            html: `<div style="background: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: ${shadow};"></div>`,
+            iconSize: [14, 14]
+          });
+
+          L.marker([site.latitude, site.longitude], { icon })
+            .addTo(map)
+            .bindPopup(`<b style="color:#000">${site.site_name}</b><br><span style="color:#666">${site.devices_offline} offline</span>`);
+          
+          markers.push([site.latitude, site.longitude]);
+        });
+        if(markers.length > 0) map.fitBounds(markers, { padding: [50, 50] });
+      });
+  </script>
+</body>
+</html>
