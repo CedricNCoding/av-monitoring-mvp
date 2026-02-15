@@ -682,8 +682,7 @@ curl -I https://backend.avmonitoring.example.com/health
 
 **Documentation détaillée :**
 - [ZIGBEE_SETUP.md](ZIGBEE_SETUP.md) - Guide complet Zigbee
-- [MOSQUITTO_SECURITY.md](../MOSQUITTO_SECURITY.md) - Détails sécurité Mosquitto
-- [MOSQUITTO_FIX.md](../MOSQUITTO_FIX.md) - Résolution problèmes Mosquitto
+- [Sécurité Mosquitto](../security/MOSQUITTO.md) - Configuration sécurisée de Mosquitto MQTT
 
 **Scripts utiles :**
 - `agent/scripts/install_zigbee_stack.sh` - Installation stack Zigbee

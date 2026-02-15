@@ -2,9 +2,15 @@
 
 Agent de surveillance pour la solution AV Monitoring.
 
-## Installation en production (sans Docker)
+## Installation en production
 
-L'agent peut être installé sur un système Linux (Ubuntu/Debian) comme un service système natif.
+L'agent s'installe sur un système Linux (Ubuntu/Debian) comme un service système natif.
+
+**⚠️ Important** : Cette installation utilise une approche **native** (Python + systemd) et **non Docker**.
+- ✅ Plus sécurisée (service avec utilisateur dédié non-root)
+- ✅ Plus simple (pas de gestion de conteneurs)
+- ✅ Meilleure performance
+- ✅ Intégration système native (systemd, journalctl)
 
 ### Installation rapide
 
@@ -27,21 +33,12 @@ sudo systemctl start avmonitoring-agent
 
 ### Documentation complète
 
-Consultez [INSTALLATION.md](./INSTALLATION.md) pour :
-- Guide d'installation détaillé
-- Configuration avancée
-- Gestion du service systemd
-- Dépannage
-- Mise à jour
-- Désinstallation
+📖 **[Guide d'installation complet](../docs/agent/INSTALLATION.md)**
 
-## Installation avec Docker
-
-Pour un environnement de développement ou de test :
-
-```bash
-docker compose up -d
-```
+Consultez également :
+- **[Installation avec Zigbee](../docs/agent/INSTALLATION_ZIGBEE.md)** - Agent + Mosquitto + Zigbee2MQTT
+- **[Configuration Zigbee](../docs/agent/ZIGBEE_SETUP.md)** - Ajout Zigbee à un agent existant
+- **[Mémo DSI](../docs/agent/MEMO-DSI.md)** - Mémo technique pour équipes DSI
 
 ## Architecture des fichiers
 
@@ -53,13 +50,14 @@ agent/
 │   ├── config_sync.py      # Synchronisation avec le backend
 │   └── drivers/            # Drivers de surveillance (ping, SNMP, PJLink)
 ├── scripts/                # Scripts d'installation
-│   ├── install.sh          # Installation en production
-│   └── uninstall.sh        # Désinstallation
+│   ├── install.sh          # Installation agent standard
+│   ├── uninstall.sh        # Désinstallation
+│   ├── install_zigbee_stack.sh   # Installation stack Zigbee
+│   └── uninstall_zigbee_stack.sh # Désinstallation stack Zigbee
 ├── packaging/              # Fichiers de packaging
 │   └── systemd/            # Service systemd
 ├── config.example.json     # Exemple de configuration
 ├── requirements.txt        # Dépendances Python
-├── INSTALLATION.md         # Documentation d'installation complète
 └── README.md               # Ce fichier
 ```
 
@@ -99,4 +97,4 @@ http://localhost:8080
 
 ## Support
 
-Pour toute question ou problème, consultez la section "Dépannage" dans [INSTALLATION.md](./INSTALLATION.md).
+Pour toute question ou problème, consultez la section "Dépannage" dans le [guide d'installation](../docs/agent/INSTALLATION.md).

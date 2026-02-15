@@ -116,20 +116,6 @@ sudo ./check_zigbee_stack.sh
 
 ---
 
-#### `repair_mosquitto_config.sh` - Réparation config Mosquitto
-
-Script de réparation pour corriger l'erreur "Duplicate persistence_location" sur les installations cassées.
-
-**Utilisation :**
-```bash
-cd /opt/avmonitoring-agent/agent/scripts
-sudo ./repair_mosquitto_config.sh
-```
-
-**Documentation complète :** [MOSQUITTO_FIX.md](../../MOSQUITTO_FIX.md)
-
----
-
 #### `uninstall_zigbee_stack.sh` - Désinstallation de la stack Zigbee
 
 Suppression complète de Mosquitto et Zigbee2MQTT.
@@ -152,10 +138,11 @@ sudo ./uninstall_zigbee_stack.sh
 
 ## 📚 Documentation Complète
 
-- [Guide d'installation complet](../../docs/INSTALLATION_AGENT_ZIGBEE.md)
-- [Setup Zigbee détaillé](../../docs/ZIGBEE_SETUP.md)
-- [Sécurité Mosquitto](../../MOSQUITTO_SECURITY.md)
-- [Troubleshooting Mosquitto](../../MOSQUITTO_FIX.md)
+- [Guide d'installation Agent Standard](../../docs/agent/INSTALLATION.md)
+- [Guide d'installation Agent + Zigbee](../../docs/agent/INSTALLATION_ZIGBEE.md)
+- [Configuration Zigbee détaillée](../../docs/agent/ZIGBEE_SETUP.md)
+- [Sécurité Mosquitto](../../docs/security/MOSQUITTO.md)
+- [Mémo technique DSI](../../docs/agent/MEMO-DSI.md)
 
 ---
 
@@ -182,17 +169,20 @@ systemctl status avmonitoring-agent mosquitto zigbee2mqtt
 ## ⚡ Démarrage Rapide (Nouveau Serveur)
 
 ```bash
-# 1. Installer l'agent
-curl -sSL https://raw.githubusercontent.com/CedricNCoding/av-monitoring-mvp/main/agent/scripts/install_agent.sh | sudo bash
+# 1. Cloner le dépôt
+git clone https://github.com/CedricNCoding/av-monitoring-mvp.git
+cd av-monitoring-mvp/agent/scripts
 
-# 2. Configurer
+# 2. Installer l'agent
+sudo ./install.sh
+
+# 3. Configurer
 sudo nano /etc/avmonitoring/config.json
 
-# 3. Démarrer
+# 4. Démarrer
 sudo systemctl start avmonitoring-agent
 
-# 4. (Optionnel) Installer Zigbee
-cd /opt/avmonitoring-agent/agent/scripts
+# 5. (Optionnel) Installer Zigbee
 sudo ./install_zigbee_stack.sh
 ```
 

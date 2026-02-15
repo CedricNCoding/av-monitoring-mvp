@@ -290,9 +290,8 @@ sudo userdel avmonitoring
 
 ### Documentation disponible
 - [INSTALLATION.md](./INSTALLATION.md) - Guide d'installation détaillé
-- [QUICKSTART.md](./QUICKSTART.md) - Démarrage rapide 5 min
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - Architecture technique
-- [CHANGELOG.md](./CHANGELOG.md) - Historique des versions
+- [INSTALLATION.md](./INSTALLATION.md) - Guide d'installation détaillé
+- [INSTALLATION_ZIGBEE.md](./INSTALLATION_ZIGBEE.md) - Installation avec support Zigbee
 
 ### Scripts fournis
 - `install.sh` - Installation automatique
