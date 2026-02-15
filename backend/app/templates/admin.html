@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administration - AV Monitoring</title>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #007AFF;
+      --primary-hover: #0051D5;
+      --bg-main: #F5F5F7;
+      --bg-card: #FFFFFF;
+      --text-main: #1D1D1F;
+      --text-muted: #86868B;
+      --border: #D2D2D7;
+      --success: #34C759;
+      --warning: #FF9500;
+      --danger: #FF3B30;
+      --shadow: rgba(0, 0, 0, 0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: var(--bg-card);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px var(--shadow);
+      margin-bottom: 30px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .back-link {
+      display: inline-block;
+      color: var(--primary);
+      text-decoration: none;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    .card {
+      background: var(--bg-card);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px var(--shadow);
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text-main);
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .file-input-wrapper input[type=file] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-name {
+      display: inline-block;
+      margin-left: 12px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .alert {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .alert-success {
+      background: #D1F4E0;
+      color: #0A6E3C;
+    }
+
+    .alert-error {
+      background: #FFE5E5;
+      color: #C41E3A;
+    }
+
+    .alert-warning {
+      background: #FFF3CD;
+      color: #856404;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .mode-selector {
+      margin-bottom: 20px;
+    }
+
+    .mode-selector label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+
+    .mode-selector input[type="radio"] {
+      width: 18px;
+      height: 18px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .stat-card {
+      background: var(--bg-main);
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" x-data="adminApp()">
+    <a href="/" class="back-link">← Retour au dashboard</a>
+
+    <header>
+      <h1>🔧 Administration</h1>
+      <p>Gestion de la base de données et paramètres système</p>
+    </header>
+
+    <!-- Alertes -->
+    <div x-show="alert.show" x-transition class="alert" :class="'alert-' + alert.type">
+      <span x-text="alert.message"></span>
+    </div>
+
+    <!-- Export de la base de données -->
+    <div class="card">
+      <h2>📥 Exporter la base de données</h2>
+      <p>
+        Télécharge toute la base de données au format JSON (sites, équipements, événements, alertes).
+        Utile pour les sauvegardes ou migrations.
+      </p>
+
+      <div class="mode-selector">
+        <label>
+          <input type="checkbox" x-model="includeSecrets">
+          <div>
+            <strong>🔑 Inclure les secrets (tokens, passwords)</strong><br>
+            <small style="color: var(--text-muted);">
+              ⚠️ Si coché, le fichier contiendra les tokens de sites, community SNMP et passwords PJLink.
+              À stocker de manière sécurisée et ne pas partager !
+            </small>
+          </div>
+        </label>
+      </div>
+
+      <button @click="exportDatabase()" class="btn btn-primary" :disabled="exporting">
+        <span x-show="!exporting">📥 Télécharger l'export</span>
+        <span x-show="exporting">⏳ Export en cours...</span>
+      </button>
+    </div>
+
+    <!-- Import de la base de données -->
+    <div class="card">
+      <h2>📤 Importer des données</h2>
+      <p>
+        Restaure ou fusionne des données depuis un fichier d'export JSON.
+        <strong>Attention :</strong> En mode "Remplacer", toutes les données actuelles seront supprimées !
+      </p>
+
+      <div class="mode-selector">
+        <label>
+          <input type="radio" x-model="importMode" value="merge">
+          <div>
+            <strong>Fusionner (merge)</strong> — Ajoute les données sans supprimer l'existant
+          </div>
+        </label>
+        <label>
+          <input type="radio" x-model="importMode" value="replace">
+          <div>
+            <strong>Remplacer (replace)</strong> — ⚠️ Supprime tout avant d'importer
+          </div>
+        </label>
+      </div>
+
+      <div class="file-input-wrapper">
+        <label class="btn btn-secondary" for="import-file">
+          📁 Choisir un fichier
+        </label>
+        <input type="file" id="import-file" accept=".json" @change="handleFileSelect($event)">
+        <span class="file-name" x-text="selectedFileName || 'Aucun fichier sélectionné'"></span>
+      </div>
+
+      <div class="btn-group">
+        <button @click="importDatabase()" class="btn btn-success" :disabled="!selectedFile || importing">
+          <span x-show="!importing">📤 Importer</span>
+          <span x-show="importing">⏳ Import en cours...</span>
+        </button>
+        <button @click="resetImport()" class="btn btn-secondary" :disabled="importing">
+          Annuler
+        </button>
+      </div>
+
+      <!-- Résultat de l'import -->
+      <div x-show="importResult" class="stats">
+        <div class="stat-card">
+          <div class="stat-value" x-text="importResult?.imported?.sites || 0"></div>
+          <div class="stat-label">Sites importés</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" x-text="importResult?.imported?.devices || 0"></div>
+          <div class="stat-label">Équipements importés</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" x-text="importResult?.imported?.events || 0"></div>
+          <div class="stat-label">Événements importés</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" x-text="importResult?.imported?.alerts || 0"></div>
+          <div class="stat-label">Alertes importées</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function adminApp() {
+      return {
+        exporting: false,
+        importing: false,
+        importMode: 'merge',
+        includeSecrets: false,
+        selectedFile: null,
+        selectedFileName: '',
+        importResult: null,
+        alert: {
+          show: false,
+          type: 'success',
+          message: ''
+        },
+
+        showAlert(type, message) {
+          this.alert = { show: true, type, message };
+          setTimeout(() => {
+            this.alert.show = false;
+          }, 5000);
+        },
+
+        async exportDatabase() {
+          this.exporting = true;
+          try {
+            // Construire l'URL avec le paramètre include_secrets
+            const url = `/admin/export-database?include_secrets=${this.includeSecrets}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Erreur lors de l\'export');
+
+            // Télécharger le fichier
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+
+            // Extraire le nom du fichier depuis les headers
+            const contentDisposition = response.headers.get('Content-Disposition');
+            const filename = contentDisposition
+              ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+              : `avmonitoring_export_${new Date().toISOString()}.json`;
+
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            this.showAlert('success', '✅ Export téléchargé avec succès !');
+          } catch (error) {
+            this.showAlert('error', '❌ Erreur lors de l\'export : ' + error.message);
+          } finally {
+            this.exporting = false;
+          }
+        },
+
+        handleFileSelect(event) {
+          const file = event.target.files[0];
+          if (file) {
+            this.selectedFile = file;
+            this.selectedFileName = file.name;
+          }
+        },
+
+        resetImport() {
+          this.selectedFile = null;
+          this.selectedFileName = '';
+          this.importResult = null;
+          document.getElementById('import-file').value = '';
+        },
+
+        async importDatabase() {
+          if (!this.selectedFile) return;
+
+          // Confirmation pour mode replace
+          if (this.importMode === 'replace') {
+            if (!confirm('⚠️ ATTENTION : Vous êtes sur le point de SUPPRIMER toutes les données actuelles et de les remplacer par celles du fichier d\'import.\n\nCette action est IRRÉVERSIBLE !\n\nVoulez-vous vraiment continuer ?')) {
+              return;
+            }
+          }
+
+          this.importing = true;
+          this.importResult = null;
+
+          try {
+            // Lire le fichier JSON
+            const text = await this.selectedFile.text();
+            const jsonData = JSON.parse(text);
+
+            // Envoyer au backend
+            const response = await fetch('/admin/import-database', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                import_data: jsonData,
+                mode: this.importMode
+              })
+            });
+
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.detail || 'Erreur lors de l\'import');
+            }
+
+            const result = await response.json();
+            this.importResult = result;
+
+            this.showAlert('success',
+              `✅ Import réussi ! ${result.imported.sites} sites, ${result.imported.devices} équipements importés.`
+            );
+
+          } catch (error) {
+            this.showAlert('error', '❌ Erreur lors de l\'import : ' + error.message);
+          } finally {
+            this.importing = false;
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

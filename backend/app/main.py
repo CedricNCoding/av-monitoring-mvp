@@ -450,6 +450,17 @@ def renew_site_token(site_id: int, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------
+# Admin UI: Page d'administration
+# ------------------------------------------------------------
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request):
+    """
+    Page d'administration pour la gestion de la base de données.
+    """
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
+# ------------------------------------------------------------
 # Ingest (Agent -> Backend)
 # ------------------------------------------------------------
 @app.post("/ingest")
@@ -2272,3 +2283,291 @@ def api_delete_device(
     db.delete(device)
     db.commit()
     return {"success": True}
+
+
+# ------------------------------------------------------------
+# Helper: Sanitize driver_config (remove secrets)
+# ------------------------------------------------------------
+def _sanitize_driver_config(config: Dict[str, Any], driver: str) -> Dict[str, Any]:
+    """
+    Retire les secrets d'une configuration driver.
+    - SNMP : community
+    - PJLink : password
+    """
+    if not config:
+        return {}
+
+    sanitized = config.copy()
+
+    if driver == "snmp" and "snmp" in sanitized:
+        snmp_config = sanitized["snmp"].copy() if isinstance(sanitized["snmp"], dict) else {}
+        snmp_config["community"] = "***REMOVED***"
+        sanitized["snmp"] = snmp_config
+
+    elif driver == "pjlink" and "pjlink" in sanitized:
+        pjlink_config = sanitized["pjlink"].copy() if isinstance(sanitized["pjlink"], dict) else {}
+        pjlink_config["password"] = "***REMOVED***"
+        sanitized["pjlink"] = pjlink_config
+
+    return sanitized
+
+
+# ------------------------------------------------------------
+# Admin API: Export/Import Database
+# ------------------------------------------------------------
+@app.get("/admin/export-database")
+def export_database(
+    include_secrets: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Exporte toute la base de données au format JSON.
+    Inclut : sites, devices, events, alerts.
+
+    Paramètres :
+    - include_secrets (bool) : Si True, inclut les tokens et passwords (SNMP, PJLink).
+                               Par défaut False pour la sécurité.
+
+    ⚠️ ATTENTION : Si include_secrets=True, le fichier contiendra des secrets !
+                   À stocker de manière sécurisée et ne pas partager.
+    """
+    from fastapi.responses import Response
+
+    export_data = {
+        "export_date": _now_utc().isoformat(),
+        "version": "1.0",
+        "include_secrets": include_secrets,
+        "sites": [],
+        "devices": [],
+        "events": [],
+        "alerts": []
+    }
+
+    # Exporter les sites
+    sites = db.query(Site).all()
+    for site in sites:
+        site_data = {
+            "id": site.id,
+            "name": site.name,
+            "timezone": site.timezone,
+            "doubt_after_days": site.doubt_after_days,
+            "reporting_ok_interval_s": site.reporting_ok_interval_s,
+            "reporting_ko_interval_s": site.reporting_ko_interval_s,
+        }
+
+        # Inclure le token seulement si demandé (sensible !)
+        if include_secrets:
+            site_data["token"] = site.token
+        else:
+            site_data["token"] = None  # Sera régénéré à l'import
+
+        export_data["sites"].append(site_data)
+
+    # Exporter les devices
+    devices = db.query(Device).all()
+    for device in devices:
+        device_data = {
+            "id": device.id,
+            "site_id": device.site_id,
+            "name": device.name,
+            "driver": device.driver,
+            "ip": device.ip,
+            "mac": device.mac,
+            "location": device.location,
+            "status": device.status,
+            "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+            "last_metrics": device.last_metrics,
+            "driver_config": device.driver_config if include_secrets else _sanitize_driver_config(device.driver_config, device.driver),
+            "driver_config_updated_at": device.driver_config_updated_at.isoformat() if device.driver_config_updated_at else None,
+            "expectations": device.expectations,
+        }
+
+        export_data["devices"].append(device_data)
+
+    # Exporter les events (limiter aux 1000 derniers pour éviter fichiers trop gros)
+    events = db.query(DeviceEvent).order_by(DeviceEvent.timestamp.desc()).limit(1000).all()
+    for event in events:
+        export_data["events"].append({
+            "id": event.id,
+            "device_id": event.device_id,
+            "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+            "status": event.status,
+            "metrics": event.metrics,
+        })
+
+    # Exporter les alerts (limiter aux 500 dernières)
+    alerts = db.query(DeviceAlert).order_by(DeviceAlert.created_at.desc()).limit(500).all()
+    for alert in alerts:
+        export_data["alerts"].append({
+            "id": alert.id,
+            "device_id": alert.device_id,
+            "created_at": alert.created_at.isoformat() if alert.created_at else None,
+            "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,
+            "alert_type": alert.alert_type,
+            "message": alert.message,
+        })
+
+    # Retourner en JSON avec header pour téléchargement
+    filename = f"avmonitoring_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    json_content = json.dumps(export_data, indent=2, ensure_ascii=False)
+
+    return Response(
+        content=json_content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@app.post("/admin/import-database")
+def import_database(
+    import_data: Dict[str, Any] = Body(...),
+    mode: str = Body("merge"),  # "merge" ou "replace"
+    db: Session = Depends(get_db)
+):
+    """
+    Importe des données depuis un export JSON.
+
+    Modes :
+    - merge (défaut) : Ajoute les données sans supprimer l'existant
+    - replace : Supprime tout avant d'importer (DANGER!)
+
+    Note : Les IDs sont recréés automatiquement, sauf pour sites si même token existe.
+    """
+    if mode not in ["merge", "replace"]:
+        raise HTTPException(status_code=400, detail="mode doit être 'merge' ou 'replace'")
+
+    # Vérifier la structure
+    required_keys = ["sites", "devices"]
+    for key in required_keys:
+        if key not in import_data:
+            raise HTTPException(status_code=400, detail=f"Clé '{key}' manquante dans l'import")
+
+    # Mode replace : TOUT supprimer
+    if mode == "replace":
+        db.query(DeviceAlert).delete()
+        db.query(DeviceEvent).delete()
+        db.query(Device).delete()
+        db.query(Site).delete()
+        db.commit()
+
+    # Mapping old_id -> new_id pour sites et devices
+    site_id_map = {}
+    device_id_map = {}
+
+    # Importer les sites
+    for site_data in import_data.get("sites", []):
+        old_site_id = site_data.get("id")
+        token = site_data.get("token")
+
+        # Vérifier si un site avec ce token existe déjà
+        existing = db.query(Site).filter(Site.token == token).first() if token else None
+
+        if existing and mode == "merge":
+            # Site existe déjà, utiliser l'existant
+            site_id_map[old_site_id] = existing.id
+            # Mettre à jour les paramètres si fournis
+            if "timezone" in site_data:
+                existing.timezone = site_data["timezone"]
+            if "doubt_after_days" in site_data:
+                existing.doubt_after_days = site_data["doubt_after_days"]
+            if "reporting_ok_interval_s" in site_data:
+                existing.reporting_ok_interval_s = site_data["reporting_ok_interval_s"]
+            if "reporting_ko_interval_s" in site_data:
+                existing.reporting_ko_interval_s = site_data["reporting_ko_interval_s"]
+        else:
+            # Créer un nouveau site
+            new_site = Site(
+                name=site_data.get("name", "Imported Site"),
+                token=token or secrets.token_urlsafe(32),
+                timezone=site_data.get("timezone", "Europe/Paris"),
+                doubt_after_days=site_data.get("doubt_after_days", 2),
+                reporting_ok_interval_s=site_data.get("reporting_ok_interval_s", 300),
+                reporting_ko_interval_s=site_data.get("reporting_ko_interval_s", 60),
+            )
+            db.add(new_site)
+            db.flush()  # Pour obtenir l'ID
+            site_id_map[old_site_id] = new_site.id
+
+    db.commit()
+
+    # Importer les devices
+    for device_data in import_data.get("devices", []):
+        old_device_id = device_data.get("id")
+        old_site_id = device_data.get("site_id")
+
+        # Mapper l'ancien site_id vers le nouveau
+        new_site_id = site_id_map.get(old_site_id)
+        if not new_site_id:
+            continue  # Skip si site parent introuvable
+
+        new_device = Device(
+            site_id=new_site_id,
+            name=device_data.get("name", "Imported Device"),
+            driver=device_data.get("driver", "ping"),
+            ip=device_data.get("ip"),
+            mac=device_data.get("mac"),
+            location=device_data.get("location"),
+            status=device_data.get("status", "unknown"),
+            last_seen=datetime.fromisoformat(device_data["last_seen"]) if device_data.get("last_seen") else None,
+            last_metrics=device_data.get("last_metrics", {}),
+            driver_config=device_data.get("driver_config", {}),
+            driver_config_updated_at=datetime.fromisoformat(device_data["driver_config_updated_at"]) if device_data.get("driver_config_updated_at") else None,
+            expectations=device_data.get("expectations", {}),
+        )
+        db.add(new_device)
+        db.flush()
+        device_id_map[old_device_id] = new_device.id
+
+    db.commit()
+
+    # Importer les events (optionnel)
+    events_imported = 0
+    for event_data in import_data.get("events", []):
+        old_device_id = event_data.get("device_id")
+        new_device_id = device_id_map.get(old_device_id)
+
+        if not new_device_id:
+            continue
+
+        new_event = DeviceEvent(
+            device_id=new_device_id,
+            timestamp=datetime.fromisoformat(event_data["timestamp"]) if event_data.get("timestamp") else _now_utc(),
+            status=event_data.get("status", "unknown"),
+            metrics=event_data.get("metrics", {}),
+        )
+        db.add(new_event)
+        events_imported += 1
+
+    # Importer les alerts (optionnel)
+    alerts_imported = 0
+    for alert_data in import_data.get("alerts", []):
+        old_device_id = alert_data.get("device_id")
+        new_device_id = device_id_map.get(old_device_id)
+
+        if not new_device_id:
+            continue
+
+        new_alert = DeviceAlert(
+            device_id=new_device_id,
+            created_at=datetime.fromisoformat(alert_data["created_at"]) if alert_data.get("created_at") else _now_utc(),
+            resolved_at=datetime.fromisoformat(alert_data["resolved_at"]) if alert_data.get("resolved_at") else None,
+            alert_type=alert_data.get("alert_type", "unknown"),
+            message=alert_data.get("message", ""),
+        )
+        db.add(new_alert)
+        alerts_imported += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "mode": mode,
+        "imported": {
+            "sites": len(site_id_map),
+            "devices": len(device_id_map),
+            "events": events_imported,
+            "alerts": alerts_imported,
+        }
+    }
